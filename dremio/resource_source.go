@@ -7,8 +7,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	dapi "github.com/saltxwater/go-dremio-api-client"
 )
+
+var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
 
 func resourceSource() *schema.Resource {
 	return &schema.Resource{
@@ -121,6 +124,54 @@ func resourceSource() *schema.Resource {
 							Type:     schema.TypeBool,
 							Optional: true,
 						},
+						"project_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"auth_mode": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							Default:      "AUTO",
+							ValidateFunc: validation.StringInSlice(gcsAuthModes, false),
+						},
+						"root_path": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "/",
+						},
+						"bucket_whitelist": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+						},
+						"async_enabled": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+						},
+						"caching_enable": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+						},
+						"cache_percent": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      70,
+							ValidateFunc: validation.IntBetween(1, 100),
+						},
+						"client_email": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"client_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"private_key_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 					},
 				},
 			},
@@ -131,6 +182,11 @@ func resourceSource() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"password": {
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
+						},
+						"private_key": {
 							Type:      schema.TypeString,
 							Optional:  true,
 							Sensitive: true,
@@ -305,6 +361,21 @@ func getSourceConfig(d *schema.ResourceData) (interface{}, error) {
 			"showOnlyConnectionDatabase": d.Get("config.0.show_only_connection_database").(bool),
 		}, nil
 	}
+	if sType == "GCS" {
+		return map[string]interface{}{
+			"projectId":       d.Get("config.0.project_id").(string),
+			"authMode":        d.Get("config.0.auth_mode").(string),
+			"rootPath":        d.Get("config.0.root_path").(string),
+			"bucketWhitelist": interfaceListToStringList(d.Get("config.0.bucket_whitelist").([]interface{})),
+			"asyncEnabled":    d.Get("config.0.async_enabled").(bool),
+			"cachingEnable":   d.Get("config.0.caching_enable").(bool),
+			"cachePercent":    d.Get("config.0.cache_percent").(int),
+			"clientEmail":     d.Get("config.0.client_email").(string),
+			"clientId":        d.Get("config.0.client_id").(string),
+			"privateKeyId":    d.Get("config.0.private_key_id").(string),
+			"privateKey":      d.Get("secure_config.0.private_key").(string),
+		}, nil
+	}
 	return nil, errors.New("Unexpected type")
 }
 
@@ -342,6 +413,31 @@ func readSourceConfig(d *schema.ResourceData, sType string, config map[string]in
 			if err != nil {
 				return err
 			}*/
+	}
+	if sType == "GCS" {
+		var bucketWhitelist []interface{}
+		if raw, ok := config["bucketWhitelist"].([]interface{}); ok {
+			bucketWhitelist = raw
+		}
+		err := d.Set("config", []interface{}{
+			map[string]interface{}{
+				"project_id":       config["projectId"].(string),
+				"auth_mode":        config["authMode"].(string),
+				"root_path":        config["rootPath"].(string),
+				"bucket_whitelist": bucketWhitelist,
+				"async_enabled":    config["asyncEnabled"].(bool),
+				"caching_enable":   config["cachingEnable"].(bool),
+				"cache_percent":    config["cachePercent"].(float64),
+				"client_email":     config["clientEmail"].(string),
+				"client_id":        config["clientId"].(string),
+				"private_key_id":   config["privateKeyId"].(string),
+			},
+		})
+		if err != nil {
+			return err
+		}
+		// privateKey is a secret field; Dremio never returns it on read, so it
+		// is intentionally left out here, same as password for MSSQL above.
 	}
 	return nil
 }

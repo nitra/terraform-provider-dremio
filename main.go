@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 
-	"github.com/saltxwater/terraform-provider-dremio/dremio"
+	"github.com/nitra/terraform-provider-dremio/dremio"
 )
 
 func main() {
