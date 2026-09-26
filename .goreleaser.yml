@@ -1,9 +1,8 @@
 # Visit https://goreleaser.com for documentation on how to customize this
 # behavior.
 #
-# No GPG signing: releases are consumed via a filesystem/network mirror for
-# internal OpenTofu use, not through the public Terraform/OpenTofu registry
-# (which is the only consumer that verifies a GPG signature).
+# Checksums are GPG-signed so registry.opentofu.org can verify releases
+# (see the "nitra" provider signing key registered there).
 version: 2
 before:
   hooks:
@@ -39,6 +38,16 @@ archives:
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
 release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true

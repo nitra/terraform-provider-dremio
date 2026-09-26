@@ -1,6 +1,8 @@
-# Publishes GitHub Release assets (cross-platform zips + SHA256SUMS) for any
-# tag matching "v*" (e.g. v0.1.0). Consumed via a filesystem/network mirror,
-# not the public Terraform/OpenTofu registry, so no GPG signing is required.
+# Publishes GitHub Release assets (cross-platform zips + SHA256SUMS, GPG-signed)
+# for any tag matching "v*" (e.g. v0.1.0), for registry.opentofu.org.
+#
+# Requires repo secrets GPG_PRIVATE_KEY and PASSPHRASE for the "nitra" provider
+# signing key (public key registered at registry.opentofu.org via provider_key.yml).
 name: release
 on:
   push:
@@ -21,10 +23,18 @@ jobs:
         with:
           go-version-file: go.mod
       -
+        name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+      -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean
         env:
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
