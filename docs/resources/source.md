@@ -31,7 +31,6 @@ resource "dremio_source" "gcs_example" {
 
 ### Required
 
-- `config` (Block List, Min: 1) (see [below for nested schema](#nestedblock--config))
 - `name` (String)
 - `type` (String)
 
@@ -42,6 +41,7 @@ resource "dremio_source" "gcs_example" {
 - `acc_never_refresh` (Boolean)
 - `acc_refresh_period_ms` (Number)
 - `auth_ttl_ms` (Number)
+- `config` (Block List) (see [below for nested schema](#nestedblock--config))
 - `dataset_expire_after_ms` (Number)
 - `dataset_refresh_after_ms` (Number)
 - `description` (String)
