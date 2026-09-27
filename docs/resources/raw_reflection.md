@@ -17,17 +17,18 @@ description: |-
 
 ### Required
 
-- **dataset_id** (String)
-- **display_fields** (List of String)
+- `dataset_id` (String)
+- `display_fields` (List of String)
 
 ### Optional
 
-- **distribution_fields** (List of String)
-- **enabled** (Boolean)
-- **id** (String) The ID of this resource.
-- **name** (String)
-- **partition_distribution_strategy** (String)
-- **partition_fields** (List of String)
-- **sort_fields** (List of String)
+- `distribution_fields` (List of String)
+- `enabled` (Boolean)
+- `name` (String)
+- `partition_distribution_strategy` (String)
+- `partition_fields` (List of String)
+- `sort_fields` (List of String)
 
+### Read-Only
 
+- `id` (String) The ID of this resource.

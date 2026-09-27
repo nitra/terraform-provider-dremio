@@ -17,41 +17,41 @@ description: |-
 
 ### Required
 
-- **relative_path** (List of String)
-- **source_id** (String)
-- **type** (String)
+- `relative_path` (List of String)
+- `source_id` (String)
+- `type` (String)
 
 ### Optional
 
-- **acc_grace_period_ms** (Number)
-- **acc_method** (String)
-- **acc_refresh_field** (String)
-- **acc_refresh_period_ms** (Number)
-- **auto_generate_column_names** (Boolean)
-- **comment** (String)
-- **escape** (String)
-- **extract_header** (Boolean)
-- **field_delimiter** (String)
-- **has_merged_cells** (Boolean)
-- **id** (String) The ID of this resource.
-- **line_delimiter** (String)
-- **quote** (String)
-- **sheet_name** (String)
-- **skip_first_line** (Boolean)
-- **trim_header** (Boolean)
+- `acc_grace_period_ms` (Number)
+- `acc_method` (String)
+- `acc_never_expire` (Boolean)
+- `acc_never_refresh` (Boolean)
+- `acc_refresh_field` (String)
+- `acc_refresh_period_ms` (Number)
+- `auto_generate_column_names` (Boolean)
+- `comment` (String)
+- `escape` (String)
+- `extract_header` (Boolean)
+- `field_delimiter` (String)
+- `has_merged_cells` (Boolean)
+- `line_delimiter` (String)
+- `quote` (String)
+- `sheet_name` (String)
+- `skip_first_line` (Boolean)
+- `trim_header` (Boolean)
 
 ### Read-Only
 
-- **fields** (List of Object, Sensitive) (see [below for nested schema](#nestedatt--fields))
-- **path** (List of String)
-- **query_path** (String)
+- `fields` (List of Object, Sensitive) (see [below for nested schema](#nestedatt--fields))
+- `id` (String) The ID of this resource.
+- `path` (List of String)
+- `query_path` (String)
 
 <a id="nestedatt--fields"></a>
 ### Nested Schema for `fields`
 
 Read-Only:
 
-- **name** (String)
-- **type** (String)
-
-
+- `name` (String)
+- `type` (String)

@@ -17,29 +17,29 @@ description: |-
 
 ### Required
 
-- **relative_path** (List of String)
-- **source_id** (String)
+- `relative_path` (List of String)
+- `source_id` (String)
 
 ### Optional
 
-- **acc_grace_period_ms** (Number)
-- **acc_method** (String)
-- **acc_refresh_field** (String)
-- **acc_refresh_period_ms** (Number)
-- **id** (String) The ID of this resource.
+- `acc_grace_period_ms` (Number)
+- `acc_method` (String)
+- `acc_never_expire` (Boolean)
+- `acc_never_refresh` (Boolean)
+- `acc_refresh_field` (String)
+- `acc_refresh_period_ms` (Number)
 
 ### Read-Only
 
-- **fields** (List of Object, Sensitive) (see [below for nested schema](#nestedatt--fields))
-- **path** (List of String)
-- **query_path** (String)
+- `fields` (List of Object, Sensitive) (see [below for nested schema](#nestedatt--fields))
+- `id` (String) The ID of this resource.
+- `path` (List of String)
+- `query_path` (String)
 
 <a id="nestedatt--fields"></a>
 ### Nested Schema for `fields`
 
 Read-Only:
 
-- **name** (String)
-- **type** (String)
-
-
+- `name` (String)
+- `type` (String)

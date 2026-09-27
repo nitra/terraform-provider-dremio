@@ -17,11 +17,9 @@ description: |-
 
 ### Required
 
-- **entity_id** (String)
-- **text** (String)
+- `entity_id` (String)
+- `text` (String)
 
-### Optional
+### Read-Only
 
-- **id** (String) The ID of this resource.
-
-
+- `id` (String) The ID of this resource.

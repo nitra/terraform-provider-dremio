@@ -17,19 +17,20 @@ description: |-
 
 ### Required
 
-- **dataset_id** (String)
-- **dimension_fields** (List of String)
-- **name** (String)
+- `dataset_id` (String)
+- `dimension_fields` (List of String)
+- `name` (String)
 
 ### Optional
 
-- **distribution_fields** (List of String)
-- **enabled** (Boolean)
-- **id** (String) The ID of this resource.
-- **measure_fields_sum** (List of String)
-- **partition_distribution_strategy** (String)
-- **partition_fields** (List of String)
-- **sort_fields** (List of String)
-- **timestamp_date_dimension_fields** (List of String)
+- `distribution_fields` (List of String)
+- `enabled` (Boolean)
+- `measure_fields_sum` (List of String)
+- `partition_distribution_strategy` (String)
+- `partition_fields` (List of String)
+- `sort_fields` (List of String)
+- `timestamp_date_dimension_fields` (List of String)
 
+### Read-Only
 
+- `id` (String) The ID of this resource.
