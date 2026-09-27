@@ -67,15 +67,20 @@ Optional:
 - `caching_enable` (Boolean)
 - `client_email` (String)
 - `client_id` (String)
+- `credential_type` (String)
 - `database` (String)
 - `fetch_size` (Number)
 - `hostname` (String)
 - `mount_path` (String)
+- `nessie_auth_type` (String)
+- `nessie_endpoint` (String)
 - `port` (String)
 - `private_key_id` (String)
 - `project_id` (String)
 - `root_path` (String)
+- `secure` (Boolean)
 - `show_only_connection_database` (Boolean)
+- `storage_provider` (String)
 - `username` (String)
 
 
@@ -84,5 +89,6 @@ Optional:
 
 Optional:
 
+- `nessie_access_token` (String, Sensitive)
 - `password` (String, Sensitive)
 - `private_key` (String, Sensitive)

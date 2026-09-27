@@ -25,9 +25,25 @@ import (
 
 var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
 
+// nessieAuthTypes are NessieAuthType values (com.dremio.exec.catalog.conf.NessieAuthType).
+var nessieAuthTypes = []string{"NONE", "BEARER", "OAUTH2"}
+
+// nessieCredentialTypes are AWSAuthenticationType values (com.dremio.exec.catalog.conf.AWSAuthenticationType).
+// NESSIE sources always carry this field even when storage_provider is GOOGLE (it's
+// inherited from AbstractDataplanePluginConfig, which is shared by AWS/Azure/Google
+// dataplane sources) - modeled purely for lossless roundtrip, not used for GOOGLE.
+var nessieCredentialTypes = []string{"ACCESS_KEY", "EC2_METADATA", "NONE", "AWS_PROFILE"}
+
+// nessieStorageProviders is intentionally restricted to GOOGLE: NessiePluginConfig
+// supports AWS/AZURE/GOOGLE, but every Nessie source in this Dremio instance uses
+// GOOGLE, and the AWS/Azure field sets are unmodeled here. A source configured for
+// AWS or Azure would fail this validator at plan time rather than silently losing
+// its storage settings on the first apply.
+var nessieStorageProviders = []string{"GOOGLE"}
+
 // sourceTypes lists every value sourceConfigToAPIConfig/applyAPIConfigToModel
 // actually implement. Keep in sync with those functions.
-var sourceTypes = []string{"NAS", "MSSQL", "GCS"}
+var sourceTypes = []string{"NAS", "MSSQL", "GCS", "NESSIE"}
 
 // sourceResourceModel is the dremio_source Go-side state model. Attribute
 // names/types must stay exactly as they were under the old SDKv2 schema
@@ -71,11 +87,17 @@ type sourceConfigModel struct {
 	ClientEmail                types.String `tfsdk:"client_email"`
 	ClientID                   types.String `tfsdk:"client_id"`
 	PrivateKeyID               types.String `tfsdk:"private_key_id"`
+	NessieEndpoint             types.String `tfsdk:"nessie_endpoint"`
+	NessieAuthType             types.String `tfsdk:"nessie_auth_type"`
+	Secure                     types.Bool   `tfsdk:"secure"`
+	StorageProvider            types.String `tfsdk:"storage_provider"`
+	CredentialType             types.String `tfsdk:"credential_type"`
 }
 
 type secureConfigModel struct {
-	Password   types.String `tfsdk:"password"`
-	PrivateKey types.String `tfsdk:"private_key"`
+	Password          types.String `tfsdk:"password"`
+	PrivateKey        types.String `tfsdk:"private_key"`
+	NessieAccessToken types.String `tfsdk:"nessie_access_token"`
 }
 
 type sourceResource struct {
@@ -189,17 +211,21 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Validators: []validator.List{listvalidator.SizeAtLeast(1), listvalidator.SizeAtMost(1)},
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						"mount_path": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"username":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"hostname":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"port":       schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"authentication_type": schema.StringAttribute{
-							Optional: true, Computed: true, Default: stringdefault.StaticString(""),
-						},
-						"fetch_size": schema.Int64Attribute{Optional: true, Computed: true, Default: int64default.StaticInt64(0)},
-						"database":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
+						// NAS/MSSQL-only fields are plain Optional (no Computed/Default)
+						// for the same reason as the Nessie-only fields further down:
+						// a Computed+Default field plans a value for every OTHER
+						// type's resources too, purely because their state predates
+						// the field. Neither NAS nor MSSQL has any real state today,
+						// so there's no Default convenience worth keeping here.
+						"mount_path":          schema.StringAttribute{Optional: true},
+						"username":            schema.StringAttribute{Optional: true},
+						"hostname":            schema.StringAttribute{Optional: true},
+						"port":                schema.StringAttribute{Optional: true},
+						"authentication_type": schema.StringAttribute{Optional: true},
+						"fetch_size":          schema.Int64Attribute{Optional: true},
+						"database":            schema.StringAttribute{Optional: true},
 						"show_only_connection_database": schema.BoolAttribute{
-							Optional: true, Computed: true, Default: booldefault.StaticBool(false),
+							Optional: true,
 						},
 						"project_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"auth_mode": schema.StringAttribute{
@@ -220,6 +246,27 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						"client_email":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"client_id":      schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"private_key_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
+						// Nessie-only fields are plain Optional (no Computed/Default):
+						// config is one shared block across all source types, and a
+						// Computed+Default field plans a value for every OTHER type's
+						// resources too (e.g. the GCS "bucket" source) the first time
+						// it's added, purely because their state predates the field.
+						// Plain Optional stays null for types that never set it, so it
+						// produces no diff; NESSIE resources set these explicitly.
+						"nessie_endpoint": schema.StringAttribute{Optional: true},
+						"nessie_auth_type": schema.StringAttribute{
+							Optional:   true,
+							Validators: []validator.String{stringvalidator.OneOf(nessieAuthTypes...)},
+						},
+						"secure": schema.BoolAttribute{Optional: true},
+						"storage_provider": schema.StringAttribute{
+							Optional:   true,
+							Validators: []validator.String{stringvalidator.OneOf(nessieStorageProviders...)},
+						},
+						"credential_type": schema.StringAttribute{
+							Optional:   true,
+							Validators: []validator.String{stringvalidator.OneOf(nessieCredentialTypes...)},
+						},
 					},
 				},
 			},
@@ -227,8 +274,9 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Validators: []validator.List{listvalidator.SizeAtMost(1)},
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						"password":    schema.StringAttribute{Optional: true, Sensitive: true},
-						"private_key": schema.StringAttribute{Optional: true, Sensitive: true},
+						"password":            schema.StringAttribute{Optional: true, Sensitive: true},
+						"private_key":         schema.StringAttribute{Optional: true, Sensitive: true},
+						"nessie_access_token": schema.StringAttribute{Optional: true, Sensitive: true},
 					},
 				},
 			},
@@ -471,6 +519,32 @@ func sourceConfigToAPIConfig(ctx context.Context, sType string, config sourceCon
 			"privateKeyId":    config.PrivateKeyID.ValueString(),
 			"privateKey":      secure.PrivateKey.ValueString(),
 		}, diags
+	case "NESSIE":
+		// Google-storage fields reuse the same JSON keys as GCS's Nessie
+		// counterparts have a different name (see the mapping table in the
+		// migration plan / commit message): googleProjectId, googleRootPath,
+		// googleAuthenticationType (same GCSAuthType enum as GCS's authMode),
+		// isCachingEnabled, maxCacheSpacePct, googlePrivateKeyId/Email/Id,
+		// googlePrivateKey. asyncEnabled is the one field GCS and NESSIE
+		// happen to share verbatim.
+		return map[string]interface{}{
+			"asyncEnabled":             config.AsyncEnabled.ValueBool(),
+			"isCachingEnabled":         config.CachingEnable.ValueBool(),
+			"maxCacheSpacePct":         config.CachePercent.ValueInt64(),
+			"storageProvider":          config.StorageProvider.ValueString(),
+			"googleProjectId":          config.ProjectID.ValueString(),
+			"googleAuthenticationType": config.AuthMode.ValueString(),
+			"googleRootPath":           config.RootPath.ValueString(),
+			"googlePrivateKeyId":       config.PrivateKeyID.ValueString(),
+			"googleClientEmail":        config.ClientEmail.ValueString(),
+			"googleClientId":           config.ClientID.ValueString(),
+			"googlePrivateKey":         secure.PrivateKey.ValueString(),
+			"nessieEndpoint":           config.NessieEndpoint.ValueString(),
+			"nessieAuthType":           config.NessieAuthType.ValueString(),
+			"secure":                   config.Secure.ValueBool(),
+			"credentialType":           config.CredentialType.ValueString(),
+			"nessieAccessToken":        secure.NessieAccessToken.ValueString(),
+		}, diags
 	}
 
 	diags.AddError("Unsupported source type", fmt.Sprintf("type %q must be one of: %s", sType, strings.Join(sourceTypes, ", ")))
@@ -484,41 +558,89 @@ func sourceConfigToAPIConfig(ctx context.Context, sType string, config sourceCon
 func applyAPIConfigToModel(sType string, apiConfig map[string]interface{}, model *sourceConfigModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	// bucket_whitelist is GCS-only. For every other type it must still start
+	// as a validly-typed null list (not the Go zero value a freshly
+	// imported/created model has), or Framework fails to serialize state
+	// with a "MISSING TYPE" error. The GCS case below unconditionally
+	// overwrites this with the real value, so resetting it first is safe.
+	model.BucketWhitelist = types.ListNull(types.StringType)
+
 	switch sType {
 	case "NAS":
-		model.MountPath = types.StringValue(apiConfig["path"].(string))
+		model.MountPath = types.StringValue(getString(apiConfig, "path"))
 	case "MSSQL":
-		model.Username = types.StringValue(apiConfig["username"].(string))
-		model.Hostname = types.StringValue(apiConfig["hostname"].(string))
-		model.Port = types.StringValue(apiConfig["port"].(string))
-		model.AuthenticationType = types.StringValue(apiConfig["authenticationType"].(string))
-		model.FetchSize = types.Int64Value(int64(apiConfig["fetchSize"].(float64)))
-		model.Database = types.StringValue(apiConfig["database"].(string))
-		model.ShowOnlyConnectionDatabase = types.BoolValue(apiConfig["showOnlyConnectionDatabase"].(bool))
+		model.Username = types.StringValue(getString(apiConfig, "username"))
+		model.Hostname = types.StringValue(getString(apiConfig, "hostname"))
+		model.Port = types.StringValue(getString(apiConfig, "port"))
+		model.AuthenticationType = types.StringValue(getString(apiConfig, "authenticationType"))
+		model.FetchSize = types.Int64Value(int64(getFloat64(apiConfig, "fetchSize")))
+		model.Database = types.StringValue(getString(apiConfig, "database"))
+		model.ShowOnlyConnectionDatabase = types.BoolValue(getBool(apiConfig, "showOnlyConnectionDatabase"))
 	case "GCS":
 		var whitelist []string
 		if raw, ok := apiConfig["bucketWhitelist"].([]interface{}); ok {
 			for _, v := range raw {
-				whitelist = append(whitelist, v.(string))
+				if s, ok := v.(string); ok {
+					whitelist = append(whitelist, s)
+				}
 			}
 		}
 		listVal, d := types.ListValueFrom(context.Background(), types.StringType, whitelist)
 		diags.Append(d...)
 
-		model.ProjectID = types.StringValue(apiConfig["projectId"].(string))
-		model.AuthMode = types.StringValue(apiConfig["authMode"].(string))
-		model.RootPath = types.StringValue(apiConfig["rootPath"].(string))
+		model.ProjectID = types.StringValue(getString(apiConfig, "projectId"))
+		model.AuthMode = types.StringValue(getString(apiConfig, "authMode"))
+		model.RootPath = types.StringValue(getString(apiConfig, "rootPath"))
 		model.BucketWhitelist = listVal
-		model.AsyncEnabled = types.BoolValue(apiConfig["asyncEnabled"].(bool))
-		model.CachingEnable = types.BoolValue(apiConfig["cachingEnable"].(bool))
-		model.CachePercent = types.Int64Value(int64(apiConfig["cachePercent"].(float64)))
-		model.ClientEmail = types.StringValue(apiConfig["clientEmail"].(string))
-		model.ClientID = types.StringValue(apiConfig["clientId"].(string))
-		model.PrivateKeyID = types.StringValue(apiConfig["privateKeyId"].(string))
+		model.AsyncEnabled = types.BoolValue(getBool(apiConfig, "asyncEnabled"))
+		model.CachingEnable = types.BoolValue(getBool(apiConfig, "cachingEnable"))
+		model.CachePercent = types.Int64Value(int64(getFloat64(apiConfig, "cachePercent")))
+		model.ClientEmail = types.StringValue(getString(apiConfig, "clientEmail"))
+		model.ClientID = types.StringValue(getString(apiConfig, "clientId"))
+		model.PrivateKeyID = types.StringValue(getString(apiConfig, "privateKeyId"))
 		// privateKey is a secret field; Dremio never returns it on read, so
 		// it is intentionally left untouched here, same as password for
 		// MSSQL above.
+	case "NESSIE":
+		model.AsyncEnabled = types.BoolValue(getBool(apiConfig, "asyncEnabled"))
+		model.CachingEnable = types.BoolValue(getBool(apiConfig, "isCachingEnabled"))
+		model.CachePercent = types.Int64Value(int64(getFloat64(apiConfig, "maxCacheSpacePct")))
+		model.StorageProvider = types.StringValue(getString(apiConfig, "storageProvider"))
+		model.ProjectID = types.StringValue(getString(apiConfig, "googleProjectId"))
+		model.AuthMode = types.StringValue(getString(apiConfig, "googleAuthenticationType"))
+		model.RootPath = types.StringValue(getString(apiConfig, "googleRootPath"))
+		// googlePrivateKeyId/googleClientEmail/googleClientId are null (and
+		// thus absent from the JSON entirely) when auth_mode is AUTO - only
+		// SERVICE_ACCOUNT_KEYS populates them - hence the safe getters here.
+		model.PrivateKeyID = types.StringValue(getString(apiConfig, "googlePrivateKeyId"))
+		model.ClientEmail = types.StringValue(getString(apiConfig, "googleClientEmail"))
+		model.ClientID = types.StringValue(getString(apiConfig, "googleClientId"))
+		model.NessieEndpoint = types.StringValue(getString(apiConfig, "nessieEndpoint"))
+		model.NessieAuthType = types.StringValue(getString(apiConfig, "nessieAuthType"))
+		model.Secure = types.BoolValue(getBool(apiConfig, "secure"))
+		model.CredentialType = types.StringValue(getString(apiConfig, "credentialType"))
+		// googlePrivateKey/nessieAccessToken are secret fields; Dremio never
+		// returns them on read, so left untouched here, same as elsewhere.
 	}
 
 	return diags
+}
+
+// getString/getBool/getFloat64 safely read a Dremio source-config field that
+// may be entirely absent from the JSON (Dremio omits fields whose Java value
+// is null, e.g. GCS service-account fields when auth_mode is AUTO) rather
+// than present with a zero value - a plain type assertion would panic.
+func getString(m map[string]interface{}, key string) string {
+	v, _ := m[key].(string)
+	return v
+}
+
+func getBool(m map[string]interface{}, key string) bool {
+	v, _ := m[key].(bool)
+	return v
+}
+
+func getFloat64(m map[string]interface{}, key string) float64 {
+	v, _ := m[key].(float64)
+	return v
 }
