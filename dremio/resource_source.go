@@ -2,7 +2,8 @@ package dremio
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -12,6 +13,10 @@ import (
 )
 
 var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
+
+// sourceTypes lists every value getSourceConfig/readSourceConfig actually
+// implement. Keep in sync with those functions.
+var sourceTypes = []string{"NAS", "MSSQL", "GCS"}
 
 func resourceSource() *schema.Resource {
 	return &schema.Resource{
@@ -24,9 +29,10 @@ func resourceSource() *schema.Resource {
 		},
 		Schema: map[string]*schema.Schema{
 			"type": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:         schema.TypeString,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validation.StringInSlice(sourceTypes, false),
 			},
 			"name": {
 				Type:     schema.TypeString,
@@ -244,6 +250,10 @@ func resourceSourceRead(ctx context.Context, d *schema.ResourceData, m interface
 	sourceId := d.Id()
 
 	source, err := c.GetSource(sourceId)
+	if isNotFoundError(err) {
+		d.SetId("")
+		return nil
+	}
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -379,7 +389,7 @@ func getSourceConfig(d *schema.ResourceData) (interface{}, error) {
 			"privateKey":      d.Get("secure_config.0.private_key").(string),
 		}, nil
 	}
-	return nil, errors.New("Unexpected type")
+	return nil, fmt.Errorf("unsupported source type %q, must be one of: %s", sType, strings.Join(sourceTypes, ", "))
 }
 
 func readSourceConfig(d *schema.ResourceData, sType string, config map[string]interface{}) error {

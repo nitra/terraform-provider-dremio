@@ -2,6 +2,8 @@ package dremio
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -66,6 +68,13 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		ApiKey:   apiKey,
 		Username: username,
 		Password: password,
+		Client: &http.Client{
+			Transport: &retryTransport{
+				base:       http.DefaultTransport,
+				maxRetries: 3,
+				baseDelay:  500 * time.Millisecond,
+			},
+		},
 	}
 	client, err := dapi.NewClient(baseUrl, config)
 	if err != nil {
