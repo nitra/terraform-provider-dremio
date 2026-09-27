@@ -86,13 +86,15 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	resp.DataSourceData = client
 }
 
-// Resources is empty for now: dremio_source moves here in the next phase of
-// the SDKv2 -> framework migration (see the approved plan). Nothing else is
-// planned to move - the other 9 SDKv2 resources are unused (confirmed via
-// `tofu state list` against the only real state that exists) and stay on
-// SDKv2 under the mux indefinitely.
+// Resources: dremio_source is the only resource migrated off SDKv2 (see the
+// approved migration plan) - it's the only one that shows up in any real
+// state we found (`tofu state list` against tofu/dremio-dev has nothing
+// else), so the other 9 SDKv2 resources stay on SDKv2 under the mux
+// indefinitely rather than as a "temporary" bridge.
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		NewSourceResource,
+	}
 }
 
 func (p *frameworkProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
