@@ -40,8 +40,6 @@ func Provider() *schema.Provider {
 		ResourcesMap: map[string]*schema.Resource{
 			"dremio_promoted_dataset": resourcePromotedDataset(),
 			"dremio_physical_dataset": resourcePhysicalDataset(),
-			"dremio_entity_tags":      resourceEntityTags(),
-			"dremio_entity_wiki":      resourceEntityWiki(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"dremio_summary": dataSourceSummary(),
