@@ -2,35 +2,12 @@ package dremio
 
 import (
 	"strings"
-
-	dapi "github.com/saltxwater/go-dremio-api-client"
 )
 
 func interfaceListToStringList(itemsRaw []interface{}) []string {
 	items := make([]string, len(itemsRaw))
 	for i, raw := range itemsRaw {
 		items[i] = raw.(string)
-	}
-	return items
-}
-
-// reflectionFieldListToStringList and interfaceListToReflectionFieldList are
-// used by the still-SDKv2 dremio_aggr_reflection resource (dremio_raw_reflection
-// moved to Framework and manages this conversion itself).
-func reflectionFieldListToStringList(itemsRaw []dapi.ReflectionField) []string {
-	items := make([]string, len(itemsRaw))
-	for i, raw := range itemsRaw {
-		items[i] = raw.Name
-	}
-	return items
-}
-
-func interfaceListToReflectionFieldList(itemsRaw []interface{}) []dapi.ReflectionField {
-	items := make([]dapi.ReflectionField, len(itemsRaw))
-	for i, raw := range itemsRaw {
-		items[i] = dapi.ReflectionField{
-			Name: raw.(string),
-		}
 	}
 	return items
 }
