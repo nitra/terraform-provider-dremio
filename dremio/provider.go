@@ -38,9 +38,6 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"dremio_folder":           resourceFolder(),
-			"dremio_space":            resourceSpace(),
-			"dremio_virtual_dataset":  resourceVirtualDataset(),
 			"dremio_promoted_dataset": resourcePromotedDataset(),
 			"dremio_physical_dataset": resourcePhysicalDataset(),
 			"dremio_entity_tags":      resourceEntityTags(),

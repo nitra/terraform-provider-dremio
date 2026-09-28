@@ -86,17 +86,20 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	resp.DataSourceData = client
 }
 
-// Resources: dremio_source, dremio_raw_reflection and dremio_aggr_reflection
-// are migrated off SDKv2 (see the approved migration plan) - none of them
-// show up in any real state we found (`tofu state list` against
-// tofu/dremio-dev has nothing but dremio_source), so the remaining 7 SDKv2
-// resources stay on SDKv2 under the mux indefinitely rather than as a
-// "temporary" bridge.
+// Resources: dremio_source, dremio_raw_reflection, dremio_aggr_reflection,
+// dremio_space, dremio_folder and dremio_virtual_dataset are migrated off
+// SDKv2 (see the approved migration plan) - none of them show up in any real
+// state we found (`tofu state list` against tofu/dremio-dev has nothing but
+// dremio_source), so the remaining 4 SDKv2 resources stay on SDKv2 under the
+// mux indefinitely rather than as a "temporary" bridge.
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewSourceResource,
 		NewRawReflectionResource,
 		NewAggrReflectionResource,
+		NewSpaceResource,
+		NewFolderResource,
+		NewVirtualDatasetResource,
 	}
 }
 
