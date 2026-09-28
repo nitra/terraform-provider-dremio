@@ -38,6 +38,13 @@ type PhysicalDataset struct {
 	AccelerationRefreshPolicy *DatasetAccelerationRefreshPolicy `json:"accelerationRefreshPolicy,omitempty"`
 }
 
+// PhysicalDatasetFormat's bool fields have no omitempty: same bug as
+// Source.AccelerationNeverExpire (see source.go) - omitempty on a bool
+// drops it from the JSON whenever it's false, and Dremio then falls back to
+// its own default instead of the caller's explicit false. Fixed here by
+// inspection alongside the empirically-verified Source fields (this
+// resource, dremio_physical_dataset, isn't migrated or exercised by any
+// real state yet, so this wasn't independently verified live).
 type PhysicalDatasetFormat struct {
 	Type                    string `json:"type,omitempty"`
 	FieldDelimiter          string `json:"fieldDelimiter,omitempty"`
@@ -45,12 +52,12 @@ type PhysicalDatasetFormat struct {
 	Quote                   string `json:"quote,omitempty"`
 	Comment                 string `json:"comment,omitempty"`
 	Escape                  string `json:"escape,omitempty"`
-	SkipFirstLine           bool   `json:"skipFirstLine,omitempty"`
-	ExtractHeader           bool   `json:"extractHeader,omitempty"`
-	TrimHeader              bool   `json:"trimHeader,omitempty"`
-	AutoGenerateColumnNames bool   `json:"autoGenerateColumnNames,omitempty"`
+	SkipFirstLine           bool   `json:"skipFirstLine"`
+	ExtractHeader           bool   `json:"extractHeader"`
+	TrimHeader              bool   `json:"trimHeader"`
+	AutoGenerateColumnNames bool   `json:"autoGenerateColumnNames"`
 	SheetName               string `json:"sheetName,omitempty"`
-	HasMergedCells          bool   `json:"hasMergedCells,omitempty"`
+	HasMergedCells          bool   `json:"hasMergedCells"`
 }
 
 type DatasetAccelerationRefreshPolicy struct {
@@ -58,8 +65,8 @@ type DatasetAccelerationRefreshPolicy struct {
 	GracePeriodMs   int    `json:"gracePeriodMs,omitempty"`
 	Method          string `json:"method,omitempty"`
 	RefreshField    string `json:"refreshField,omitempty"`
-	NeverExpire     bool   `json:"neverExpire,omitempty"`
-	NeverRefresh    bool   `json:"neverRefresh,omitempty"`
+	NeverExpire     bool   `json:"neverExpire"`
+	NeverRefresh    bool   `json:"neverRefresh"`
 }
 
 func (c *Client) GetDataset(id string) (*Dataset, error) {

@@ -21,8 +21,16 @@ type Source struct {
 	MetadataPolicy              *SourceMetadataPolicy `json:"metadataPolicy,omitempty"`
 	AccelerationRefreshPeriodMs int                   `json:"accelerationRefreshPeriodMs,omitempty"`
 	AccelerationGracePeriodMs   int                   `json:"accelerationGracePeriodMs,omitempty"`
-	AccelerationNeverExpire     bool                  `json:"accelerationNeverExpire,omitempty"`
-	AccelerationNeverRefresh    bool                  `json:"accelerationNeverRefresh,omitempty"`
+	// AccelerationNeverExpire/AccelerationNeverRefresh have no omitempty:
+	// verified live against dev Dremio that omitting a `false` value here
+	// (bool's zero value) doesn't error, it silently resets the field to
+	// Dremio's own default (false) on the next PUT - so a real source with
+	// either flag set to true would have it silently flipped back to false
+	// by any Update call whose Go-side value happened to be false. Same bug
+	// class as Reflection.Enabled below, different failure mode (silent
+	// data loss instead of a 400).
+	AccelerationNeverExpire  bool `json:"accelerationNeverExpire"`
+	AccelerationNeverRefresh bool `json:"accelerationNeverRefresh"`
 }
 
 func (c *Client) GetSource(id string) (*Source, error) {
