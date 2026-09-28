@@ -43,7 +43,6 @@ func Provider() *schema.Provider {
 			"dremio_virtual_dataset":  resourceVirtualDataset(),
 			"dremio_promoted_dataset": resourcePromotedDataset(),
 			"dremio_physical_dataset": resourcePhysicalDataset(),
-			"dremio_raw_reflection":   resourceRawReflection(),
 			"dremio_aggr_reflection":  resourceAggregationReflection(),
 			"dremio_entity_tags":      resourceEntityTags(),
 			"dremio_entity_wiki":      resourceEntityWiki(),

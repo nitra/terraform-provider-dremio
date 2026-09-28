@@ -94,6 +94,7 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewSourceResource,
+		NewRawReflectionResource,
 	}
 }
 
