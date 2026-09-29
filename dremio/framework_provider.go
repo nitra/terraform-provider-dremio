@@ -86,12 +86,11 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 	resp.DataSourceData = client
 }
 
-// Resources: everything except dremio_physical_dataset and
-// dremio_promoted_dataset is migrated off SDKv2 (see the approved migration
-// plan) - none of them show up in any real state we found (`tofu state list`
-// against tofu/dremio-dev has nothing but dremio_source), so the remaining 2
-// SDKv2 resources stay on SDKv2 under the mux indefinitely rather than as a
-// "temporary" bridge.
+// Resources: every resource is migrated off SDKv2 (see the approved
+// migration plan) - none of them show up in any real state we found
+// (`tofu state list` against tofu/dremio-dev has nothing but dremio_source).
+// Only the dremio_summary data source stays on SDKv2 under the mux (see
+// provider.go).
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewSourceResource,
@@ -102,6 +101,8 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewVirtualDatasetResource,
 		NewEntityTagsResource,
 		NewEntityWikiResource,
+		NewPhysicalDatasetResource,
+		NewPromotedDatasetResource,
 	}
 }
 

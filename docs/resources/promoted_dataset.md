@@ -43,7 +43,7 @@ description: |-
 
 ### Read-Only
 
-- `fields` (List of Object, Sensitive) (see [below for nested schema](#nestedatt--fields))
+- `fields` (Attributes List, Sensitive) (see [below for nested schema](#nestedatt--fields))
 - `id` (String) The ID of this resource.
 - `path` (List of String)
 - `query_path` (String)

@@ -37,10 +37,13 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("DREMIO_PASSWORD", nil),
 			},
 		},
-		ResourcesMap: map[string]*schema.Resource{
-			"dremio_promoted_dataset": resourcePromotedDataset(),
-			"dremio_physical_dataset": resourcePhysicalDataset(),
-		},
+		// ResourcesMap is empty: every resource has migrated to
+		// terraform-plugin-framework (see framework_provider.go). The SDKv2
+		// half of the mux stays alive only for dremio_summary, the one
+		// remaining data source (see the approved migration plan - data
+		// sources are a separate, lower-priority track since they carry no
+		// state and therefore no drift/data-loss risk).
+		ResourcesMap: map[string]*schema.Resource{},
 		DataSourcesMap: map[string]*schema.Resource{
 			"dremio_summary": dataSourceSummary(),
 		},

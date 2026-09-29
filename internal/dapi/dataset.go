@@ -38,13 +38,22 @@ type PhysicalDataset struct {
 	AccelerationRefreshPolicy *DatasetAccelerationRefreshPolicy `json:"accelerationRefreshPolicy,omitempty"`
 }
 
-// PhysicalDatasetFormat's bool fields have no omitempty: same bug as
-// Source.AccelerationNeverExpire (see source.go) - omitempty on a bool
-// drops it from the JSON whenever it's false, and Dremio then falls back to
-// its own default instead of the caller's explicit false. Fixed here by
-// inspection alongside the empirically-verified Source fields (this
-// resource, dremio_physical_dataset, isn't migrated or exercised by any
-// real state yet, so this wasn't independently verified live).
+// PhysicalDatasetFormat's bool fields mostly have no omitempty, matching
+// the Source.AccelerationNeverExpire fix (see source.go): omitempty on a
+// bool drops it whenever it's false, and Dremio falls back to its own
+// default instead of the caller's explicit false.
+//
+// HasMergedCells is the one exception, and it's deliberate: it's an
+// Excel-only field, and Dremio validates format fields against the format's
+// `type` - sending it (even as false) for a non-Excel type (e.g. "Text"/CSV)
+// gets rejected with `400 "Invalid value found at: format.hasMergedCells"`,
+// confirmed live while verifying dremio_promoted_dataset's Framework
+// migration. This is a different bug class from the omitempty one: the
+// original "fix by inspection" (assuming this field behaved like Source's
+// acceleration flags) was wrong for this specific field, since unlike
+// those, PhysicalDatasetFormat's fields are type-conditional, not
+// universally valid. Reverted to omitempty here so it's only sent when a
+// caller actually sets it (Excel format).
 type PhysicalDatasetFormat struct {
 	Type                    string `json:"type,omitempty"`
 	FieldDelimiter          string `json:"fieldDelimiter,omitempty"`
@@ -57,7 +66,7 @@ type PhysicalDatasetFormat struct {
 	TrimHeader              bool   `json:"trimHeader"`
 	AutoGenerateColumnNames bool   `json:"autoGenerateColumnNames"`
 	SheetName               string `json:"sheetName,omitempty"`
-	HasMergedCells          bool   `json:"hasMergedCells"`
+	HasMergedCells          bool   `json:"hasMergedCells,omitempty"`
 }
 
 type DatasetAccelerationRefreshPolicy struct {
@@ -207,9 +216,21 @@ func (c *Client) UpdatePhysicalDataset(id string, spec *UpdatePhysicalDatasetSpe
 	if err != nil {
 		return nil, err
 	}
+	// A nil spec.Format means "leave the format alone" (e.g. a caller only
+	// managing the acceleration policy, not the format), not "clear it".
+	// Confirmed live: sending a PUT with no format at all makes Dremio
+	// reject it outright with 404 "Promoted dataset needs to have a format
+	// set" - this used to unconditionally send spec.Format as-is, which
+	// broke every update for a caller that only ever set
+	// AccelerationRefreshPolicy (dremio_physical_dataset, in both this fork
+	// and the original upstream, never set Format at all).
+	format := spec.Format
+	if format == nil {
+		format = original.Format
+	}
 	dataset := PhysicalDataset{
 		Dataset:                   original.Dataset,
-		Format:                    spec.Format,
+		Format:                    format,
 		AccelerationRefreshPolicy: spec.AccelerationRefreshPolicy,
 	}
 	result := new(PhysicalDataset)
