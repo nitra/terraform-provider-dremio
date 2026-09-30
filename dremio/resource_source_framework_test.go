@@ -214,8 +214,244 @@ func TestApplyAPIConfigToModel_NESSIE_roundtrip(t *testing.T) {
 }
 
 func TestSourceConfigToAPIConfig_UnsupportedType(t *testing.T) {
-	_, diags := sourceConfigToAPIConfig(context.Background(), "POSTGRES", sourceConfigModel{}, secureConfigModel{})
+	_, diags := sourceConfigToAPIConfig(context.Background(), "ORACLE", sourceConfigModel{}, secureConfigModel{})
 	if !diags.HasError() {
 		t.Fatal("expected an error for an unsupported source type, got none")
+	}
+}
+
+func TestSourceConfigToAPIConfig_MSSQL(t *testing.T) {
+	config := sourceConfigModel{
+		Hostname:                   types.StringValue("win-dev.gcp.abie.app"),
+		Username:                   types.StringValue("nitra-viewer1"),
+		AuthenticationType:         types.StringValue("MASTER"),
+		FetchSize:                  types.Int64Value(200),
+		Database:                   types.StringValue("SW_Central_SIU"),
+		ShowOnlyConnectionDatabase: types.BoolValue(false),
+		UseSsl:                     types.BoolValue(false),
+		EnableServerVerification:   types.BoolValue(false),
+		MaxIdleConns:               types.Int64Value(8),
+		IdleTimeSec:                types.Int64Value(60),
+		QueryTimeoutSec:            types.Int64Value(0),
+		UserImpersonation:          types.BoolValue(false),
+	}
+	secure := secureConfigModel{Password: types.StringValue("s3cr3t")}
+
+	got, diags := sourceConfigToAPIConfig(context.Background(), "MSSQL", config, secure)
+	if diags.HasError() {
+		t.Fatalf("sourceConfigToAPIConfig returned diagnostics: %v", diags)
+	}
+
+	want := map[string]interface{}{
+		"hostname":                   "win-dev.gcp.abie.app",
+		"username":                   "nitra-viewer1",
+		"password":                   "s3cr3t",
+		"authenticationType":         "MASTER",
+		"fetchSize":                  int64(200),
+		"database":                   "SW_Central_SIU",
+		"showOnlyConnectionDatabase": false,
+		"useSsl":                     false,
+		"enableServerVerification":   false,
+		"maxIdleConns":               int64(8),
+		"idleTimeSec":                int64(60),
+		"queryTimeoutSec":            int64(0),
+		"userImpersonation":          false,
+	}
+	for k, wantV := range want {
+		gotV, ok := got[k]
+		if !ok {
+			t.Errorf("missing key %q in config", k)
+			continue
+		}
+		if !reflect.DeepEqual(gotV, wantV) {
+			t.Errorf("config[%q] = %#v, want %#v", k, gotV, wantV)
+		}
+	}
+}
+
+func TestApplyAPIConfigToModel_MSSQL_roundtrip(t *testing.T) {
+	apiConfig := map[string]interface{}{
+		"hostname":           "win-dev.gcp.abie.app",
+		"username":           "nitra-viewer1",
+		"authenticationType": "MASTER",
+		"fetchSize":          float64(200),
+		"database":           "SW_Central_SIU",
+		"useSsl":             false,
+		// port deliberately omitted here, mirroring the real sw_central
+		// response: Dremio drops JDBC fields left at their zero/default
+		// value entirely rather than serializing them.
+		"maxIdleConns":    float64(8),
+		"idleTimeSec":     float64(60),
+		"queryTimeoutSec": float64(0),
+	}
+
+	model := sourceConfigModel{}
+	diags := applyAPIConfigToModel("MSSQL", apiConfig, &model)
+	if diags.HasError() {
+		t.Fatalf("applyAPIConfigToModel returned diagnostics: %v", diags)
+	}
+
+	if got := model.Port.ValueString(); got != "" {
+		t.Errorf("Port = %q, want empty (absent from the API response)", got)
+	}
+	if got := model.Hostname.ValueString(); got != "win-dev.gcp.abie.app" {
+		t.Errorf("Hostname = %q, unexpected", got)
+	}
+	if got := model.MaxIdleConns.ValueInt64(); got != 8 {
+		t.Errorf("MaxIdleConns = %d, want 8", got)
+	}
+}
+
+func TestSourceConfigToAPIConfig_MYSQL(t *testing.T) {
+	config := sourceConfigModel{
+		Hostname:           types.StringValue("caps-db.dev-caps.svc.abie-ua.internal"),
+		Port:               types.StringValue("3306"),
+		Database:           types.StringValue("caps"),
+		Username:           types.StringValue("caps"),
+		AuthenticationType: types.StringValue("MASTER"),
+		FetchSize:          types.Int64Value(200),
+		NetWriteTimeout:    types.Int64Value(60),
+		MaxIdleConns:       types.Int64Value(8),
+		IdleTimeSec:        types.Int64Value(60),
+		QueryTimeoutSec:    types.Int64Value(0),
+	}
+	secure := secureConfigModel{Password: types.StringValue("s3cr3t")}
+
+	got, diags := sourceConfigToAPIConfig(context.Background(), "MYSQL", config, secure)
+	if diags.HasError() {
+		t.Fatalf("sourceConfigToAPIConfig returned diagnostics: %v", diags)
+	}
+
+	want := map[string]interface{}{
+		"hostname":           "caps-db.dev-caps.svc.abie-ua.internal",
+		"port":               "3306",
+		"database":           "caps",
+		"username":           "caps",
+		"password":           "s3cr3t",
+		"authenticationType": "MASTER",
+		"fetchSize":          int64(200),
+		"netWriteTimeout":    int64(60),
+		"maxIdleConns":       int64(8),
+		"idleTimeSec":        int64(60),
+		"queryTimeoutSec":    int64(0),
+	}
+	for k, wantV := range want {
+		gotV, ok := got[k]
+		if !ok {
+			t.Errorf("missing key %q in config", k)
+			continue
+		}
+		if !reflect.DeepEqual(gotV, wantV) {
+			t.Errorf("config[%q] = %#v, want %#v", k, gotV, wantV)
+		}
+	}
+}
+
+func TestApplyAPIConfigToModel_MYSQL_roundtrip(t *testing.T) {
+	apiConfig := map[string]interface{}{
+		"hostname":           "caps-db.dev-caps.svc.abie-ua.internal",
+		"port":               "3306",
+		"database":           "caps",
+		"username":           "caps",
+		"authenticationType": "MASTER",
+		"fetchSize":          float64(200),
+		"netWriteTimeout":    float64(60),
+		"maxIdleConns":       float64(8),
+		"idleTimeSec":        float64(60),
+		"queryTimeoutSec":    float64(0),
+	}
+
+	model := sourceConfigModel{}
+	diags := applyAPIConfigToModel("MYSQL", apiConfig, &model)
+	if diags.HasError() {
+		t.Fatalf("applyAPIConfigToModel returned diagnostics: %v", diags)
+	}
+
+	if got := model.Database.ValueString(); got != "caps" {
+		t.Errorf("Database = %q, want caps", got)
+	}
+	if got := model.NetWriteTimeout.ValueInt64(); got != 60 {
+		t.Errorf("NetWriteTimeout = %d, want 60", got)
+	}
+}
+
+func TestSourceConfigToAPIConfig_POSTGRES(t *testing.T) {
+	config := sourceConfigModel{
+		Hostname:                 types.StringValue("cluster-hasura-rw.dev-db.svc.abie-ua.internal"),
+		Port:                     types.StringValue("5432"),
+		Database:                 types.StringValue("hasura"),
+		Username:                 types.StringValue("hasura"),
+		AuthenticationType:       types.StringValue("MASTER"),
+		FetchSize:                types.Int64Value(200),
+		UseSsl:                   types.BoolValue(false),
+		EncryptionValidationMode: types.StringValue("CERTIFICATE_AND_HOSTNAME_VALIDATION"),
+		MaxIdleConns:             types.Int64Value(8),
+		IdleTimeSec:              types.Int64Value(60),
+		QueryTimeoutSec:          types.Int64Value(0),
+	}
+	secure := secureConfigModel{Password: types.StringValue("s3cr3t")}
+
+	got, diags := sourceConfigToAPIConfig(context.Background(), "POSTGRES", config, secure)
+	if diags.HasError() {
+		t.Fatalf("sourceConfigToAPIConfig returned diagnostics: %v", diags)
+	}
+
+	// databaseName, not database - the one field POSTGRES names differently
+	// from every other JDBC type modeled here.
+	want := map[string]interface{}{
+		"hostname":                 "cluster-hasura-rw.dev-db.svc.abie-ua.internal",
+		"port":                     "5432",
+		"databaseName":             "hasura",
+		"username":                 "hasura",
+		"password":                 "s3cr3t",
+		"authenticationType":       "MASTER",
+		"fetchSize":                int64(200),
+		"useSsl":                   false,
+		"encryptionValidationMode": "CERTIFICATE_AND_HOSTNAME_VALIDATION",
+		"maxIdleConns":             int64(8),
+		"idleTimeSec":              int64(60),
+		"queryTimeoutSec":          int64(0),
+	}
+	for k, wantV := range want {
+		gotV, ok := got[k]
+		if !ok {
+			t.Errorf("missing key %q in config", k)
+			continue
+		}
+		if !reflect.DeepEqual(gotV, wantV) {
+			t.Errorf("config[%q] = %#v, want %#v", k, gotV, wantV)
+		}
+	}
+	if _, ok := got["database"]; ok {
+		t.Errorf("config unexpectedly has a \"database\" key; POSTGRES uses databaseName")
+	}
+}
+
+func TestApplyAPIConfigToModel_POSTGRES_roundtrip(t *testing.T) {
+	apiConfig := map[string]interface{}{
+		"hostname":                 "cluster-hasura-rw.dev-db.svc.abie-ua.internal",
+		"port":                     "5432",
+		"databaseName":             "hasura",
+		"username":                 "hasura",
+		"authenticationType":       "MASTER",
+		"fetchSize":                float64(200),
+		"useSsl":                   false,
+		"encryptionValidationMode": "CERTIFICATE_AND_HOSTNAME_VALIDATION",
+		"maxIdleConns":             float64(8),
+		"idleTimeSec":              float64(60),
+		"queryTimeoutSec":          float64(0),
+	}
+
+	model := sourceConfigModel{}
+	diags := applyAPIConfigToModel("POSTGRES", apiConfig, &model)
+	if diags.HasError() {
+		t.Fatalf("applyAPIConfigToModel returned diagnostics: %v", diags)
+	}
+
+	if got := model.Database.ValueString(); got != "hasura" {
+		t.Errorf("Database = %q, want hasura (read from databaseName)", got)
+	}
+	if got := model.EncryptionValidationMode.ValueString(); got != "CERTIFICATE_AND_HOSTNAME_VALIDATION" {
+		t.Errorf("EncryptionValidationMode = %q, unexpected", got)
 	}
 }

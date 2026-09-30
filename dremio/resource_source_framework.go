@@ -43,7 +43,7 @@ var nessieStorageProviders = []string{"GOOGLE"}
 
 // sourceTypes lists every value sourceConfigToAPIConfig/applyAPIConfigToModel
 // actually implement. Keep in sync with those functions.
-var sourceTypes = []string{"NAS", "MSSQL", "GCS", "NESSIE"}
+var sourceTypes = []string{"NAS", "MSSQL", "GCS", "NESSIE", "MYSQL", "POSTGRES"}
 
 // sourceResourceModel is the dremio_source Go-side state model. Attribute
 // names/types must stay exactly as they were under the old SDKv2 schema
@@ -92,6 +92,17 @@ type sourceConfigModel struct {
 	Secure                     types.Bool   `tfsdk:"secure"`
 	StorageProvider            types.String `tfsdk:"storage_provider"`
 	CredentialType             types.String `tfsdk:"credential_type"`
+	// JDBC-family fields (MYSQL/POSTGRES/MSSQL), shared to varying degrees -
+	// see sourceConfigToAPIConfig/applyAPIConfigToModel for which type uses
+	// which.
+	MaxIdleConns             types.Int64  `tfsdk:"max_idle_conns"`
+	IdleTimeSec              types.Int64  `tfsdk:"idle_time_sec"`
+	QueryTimeoutSec          types.Int64  `tfsdk:"query_timeout_sec"`
+	UseSsl                   types.Bool   `tfsdk:"use_ssl"`
+	NetWriteTimeout          types.Int64  `tfsdk:"net_write_timeout"`
+	EncryptionValidationMode types.String `tfsdk:"encryption_validation_mode"`
+	EnableServerVerification types.Bool   `tfsdk:"enable_server_verification"`
+	UserImpersonation        types.Bool   `tfsdk:"user_impersonation"`
 }
 
 type secureConfigModel struct {
@@ -267,6 +278,23 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 							Optional:   true,
 							Validators: []validator.String{stringvalidator.OneOf(nessieCredentialTypes...)},
 						},
+						// JDBC-family fields (MYSQL/POSTGRES/MSSQL) are plain Optional for
+						// the same reason as the Nessie-only fields above: no real state
+						// predates them for any type, and a shared Computed+Default would
+						// plan a spurious value on every OTHER type's resources. There's no
+						// enum validator on authentication_type or
+						// encryption_validation_mode: unlike GCS/NESSIE, these are closed
+						// Enterprise connectors with no public Java class to confirm the
+						// full set of legal values against - only "MASTER" and
+						// "CERTIFICATE_AND_HOSTNAME_VALIDATION" have actually been observed.
+						"max_idle_conns":             schema.Int64Attribute{Optional: true},
+						"idle_time_sec":              schema.Int64Attribute{Optional: true},
+						"query_timeout_sec":          schema.Int64Attribute{Optional: true},
+						"use_ssl":                    schema.BoolAttribute{Optional: true},
+						"net_write_timeout":          schema.Int64Attribute{Optional: true},
+						"encryption_validation_mode": schema.StringAttribute{Optional: true},
+						"enable_server_verification": schema.BoolAttribute{Optional: true},
+						"user_impersonation":         schema.BoolAttribute{Optional: true},
 					},
 				},
 			},
@@ -502,6 +530,41 @@ func sourceConfigToAPIConfig(ctx context.Context, sType string, config sourceCon
 			"fetchSize":                  config.FetchSize.ValueInt64(),
 			"database":                   config.Database.ValueString(),
 			"showOnlyConnectionDatabase": config.ShowOnlyConnectionDatabase.ValueBool(),
+			"useSsl":                     config.UseSsl.ValueBool(),
+			"enableServerVerification":   config.EnableServerVerification.ValueBool(),
+			"maxIdleConns":               config.MaxIdleConns.ValueInt64(),
+			"idleTimeSec":                config.IdleTimeSec.ValueInt64(),
+			"queryTimeoutSec":            config.QueryTimeoutSec.ValueInt64(),
+			"userImpersonation":          config.UserImpersonation.ValueBool(),
+		}, diags
+	case "MYSQL":
+		return map[string]interface{}{
+			"hostname":           config.Hostname.ValueString(),
+			"port":               config.Port.ValueString(),
+			"database":           config.Database.ValueString(),
+			"username":           config.Username.ValueString(),
+			"password":           secure.Password.ValueString(),
+			"authenticationType": config.AuthenticationType.ValueString(),
+			"fetchSize":          config.FetchSize.ValueInt64(),
+			"netWriteTimeout":    config.NetWriteTimeout.ValueInt64(),
+			"maxIdleConns":       config.MaxIdleConns.ValueInt64(),
+			"idleTimeSec":        config.IdleTimeSec.ValueInt64(),
+			"queryTimeoutSec":    config.QueryTimeoutSec.ValueInt64(),
+		}, diags
+	case "POSTGRES":
+		return map[string]interface{}{
+			"hostname":                 config.Hostname.ValueString(),
+			"port":                     config.Port.ValueString(),
+			"databaseName":             config.Database.ValueString(),
+			"username":                 config.Username.ValueString(),
+			"password":                 secure.Password.ValueString(),
+			"authenticationType":       config.AuthenticationType.ValueString(),
+			"fetchSize":                config.FetchSize.ValueInt64(),
+			"useSsl":                   config.UseSsl.ValueBool(),
+			"encryptionValidationMode": config.EncryptionValidationMode.ValueString(),
+			"maxIdleConns":             config.MaxIdleConns.ValueInt64(),
+			"idleTimeSec":              config.IdleTimeSec.ValueInt64(),
+			"queryTimeoutSec":          config.QueryTimeoutSec.ValueInt64(),
 		}, diags
 	case "GCS":
 		var bucketWhitelist []string
@@ -576,6 +639,35 @@ func applyAPIConfigToModel(sType string, apiConfig map[string]interface{}, model
 		model.FetchSize = types.Int64Value(int64(getFloat64(apiConfig, "fetchSize")))
 		model.Database = types.StringValue(getString(apiConfig, "database"))
 		model.ShowOnlyConnectionDatabase = types.BoolValue(getBool(apiConfig, "showOnlyConnectionDatabase"))
+		model.UseSsl = types.BoolValue(getBool(apiConfig, "useSsl"))
+		model.EnableServerVerification = types.BoolValue(getBool(apiConfig, "enableServerVerification"))
+		model.MaxIdleConns = types.Int64Value(int64(getFloat64(apiConfig, "maxIdleConns")))
+		model.IdleTimeSec = types.Int64Value(int64(getFloat64(apiConfig, "idleTimeSec")))
+		model.QueryTimeoutSec = types.Int64Value(int64(getFloat64(apiConfig, "queryTimeoutSec")))
+		model.UserImpersonation = types.BoolValue(getBool(apiConfig, "userImpersonation"))
+	case "MYSQL":
+		model.Hostname = types.StringValue(getString(apiConfig, "hostname"))
+		model.Port = types.StringValue(getString(apiConfig, "port"))
+		model.Database = types.StringValue(getString(apiConfig, "database"))
+		model.Username = types.StringValue(getString(apiConfig, "username"))
+		model.AuthenticationType = types.StringValue(getString(apiConfig, "authenticationType"))
+		model.FetchSize = types.Int64Value(int64(getFloat64(apiConfig, "fetchSize")))
+		model.NetWriteTimeout = types.Int64Value(int64(getFloat64(apiConfig, "netWriteTimeout")))
+		model.MaxIdleConns = types.Int64Value(int64(getFloat64(apiConfig, "maxIdleConns")))
+		model.IdleTimeSec = types.Int64Value(int64(getFloat64(apiConfig, "idleTimeSec")))
+		model.QueryTimeoutSec = types.Int64Value(int64(getFloat64(apiConfig, "queryTimeoutSec")))
+	case "POSTGRES":
+		model.Hostname = types.StringValue(getString(apiConfig, "hostname"))
+		model.Port = types.StringValue(getString(apiConfig, "port"))
+		model.Database = types.StringValue(getString(apiConfig, "databaseName"))
+		model.Username = types.StringValue(getString(apiConfig, "username"))
+		model.AuthenticationType = types.StringValue(getString(apiConfig, "authenticationType"))
+		model.FetchSize = types.Int64Value(int64(getFloat64(apiConfig, "fetchSize")))
+		model.UseSsl = types.BoolValue(getBool(apiConfig, "useSsl"))
+		model.EncryptionValidationMode = types.StringValue(getString(apiConfig, "encryptionValidationMode"))
+		model.MaxIdleConns = types.Int64Value(int64(getFloat64(apiConfig, "maxIdleConns")))
+		model.IdleTimeSec = types.Int64Value(int64(getFloat64(apiConfig, "idleTimeSec")))
+		model.QueryTimeoutSec = types.Int64Value(int64(getFloat64(apiConfig, "queryTimeoutSec")))
 	case "GCS":
 		var whitelist []string
 		if raw, ok := apiConfig["bucketWhitelist"].([]interface{}); ok {
