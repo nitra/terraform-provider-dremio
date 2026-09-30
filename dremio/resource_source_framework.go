@@ -222,21 +222,38 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Validators: []validator.List{listvalidator.SizeAtLeast(1), listvalidator.SizeAtMost(1)},
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						// NAS/MSSQL-only fields are plain Optional (no Computed/Default)
-						// for the same reason as the Nessie-only fields further down:
-						// a Computed+Default field plans a value for every OTHER
-						// type's resources too, purely because their state predates
-						// the field. Neither NAS nor MSSQL has any real state today,
-						// so there's no Default convenience worth keeping here.
-						"mount_path":          schema.StringAttribute{Optional: true},
-						"username":            schema.StringAttribute{Optional: true},
-						"hostname":            schema.StringAttribute{Optional: true},
-						"port":                schema.StringAttribute{Optional: true},
-						"authentication_type": schema.StringAttribute{Optional: true},
-						"fetch_size":          schema.Int64Attribute{Optional: true},
-						"database":            schema.StringAttribute{Optional: true},
+						// Type-specific fields across this whole block (NAS/MSSQL-only
+						// here, Nessie-only and JDBC-family further down) are
+						// Optional+Computed with NO static Default. Two failure modes
+						// ruled this out, both found live:
+						//   1. Plain Optional (no Computed at all) crashes with
+						//      "Provider produced inconsistent result after apply" the
+						//      moment a caller leaves the field unset AND Dremio's API
+						//      returns a concrete value for it (even a zero value like
+						//      queryTimeoutSec=0) - applyAPIConfigToModel unconditionally
+						//      writes a known value, which conflicts with the null a
+						//      non-Computed Optional attribute is required to keep.
+						//      Confirmed live creating a throwaway MYSQL source without
+						//      setting fetch_size/idle_time_sec/etc.
+						//   2. A static Default (Computed+Default, like GCS's fields
+						//      below) plans a concrete value for every OTHER type's
+						//      resources too, the first time the field is added -
+						//      confirmed live as a "+cache_percent=70" style ghost diff
+						//      on the real c/h/sw_central sources when MYSQL/POSTGRES
+						//      shipped, even though those types never read that field.
+						// Computed with no Default avoids both: any real value Dremio
+						// returns is acceptable (no crash), and for types that don't
+						// use the field, the one-time diff after adding it is an honest
+						// "(known after apply)" rather than a misleading concrete value.
+						"mount_path":          schema.StringAttribute{Optional: true, Computed: true},
+						"username":            schema.StringAttribute{Optional: true, Computed: true},
+						"hostname":            schema.StringAttribute{Optional: true, Computed: true},
+						"port":                schema.StringAttribute{Optional: true, Computed: true},
+						"authentication_type": schema.StringAttribute{Optional: true, Computed: true},
+						"fetch_size":          schema.Int64Attribute{Optional: true, Computed: true},
+						"database":            schema.StringAttribute{Optional: true, Computed: true},
 						"show_only_connection_database": schema.BoolAttribute{
-							Optional: true,
+							Optional: true, Computed: true,
 						},
 						"project_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"auth_mode": schema.StringAttribute{
@@ -257,44 +274,37 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						"client_email":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"client_id":      schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
 						"private_key_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						// Nessie-only fields are plain Optional (no Computed/Default):
-						// config is one shared block across all source types, and a
-						// Computed+Default field plans a value for every OTHER type's
-						// resources too (e.g. the GCS "bucket" source) the first time
-						// it's added, purely because their state predates the field.
-						// Plain Optional stays null for types that never set it, so it
-						// produces no diff; NESSIE resources set these explicitly.
-						"nessie_endpoint": schema.StringAttribute{Optional: true},
+						// Nessie-only fields: Optional+Computed, no Default - see the
+						// comment above mount_path etc. for why.
+						"nessie_endpoint": schema.StringAttribute{Optional: true, Computed: true},
 						"nessie_auth_type": schema.StringAttribute{
-							Optional:   true,
+							Optional: true, Computed: true,
 							Validators: []validator.String{stringvalidator.OneOf(nessieAuthTypes...)},
 						},
-						"secure": schema.BoolAttribute{Optional: true},
+						"secure": schema.BoolAttribute{Optional: true, Computed: true},
 						"storage_provider": schema.StringAttribute{
-							Optional:   true,
+							Optional: true, Computed: true,
 							Validators: []validator.String{stringvalidator.OneOf(nessieStorageProviders...)},
 						},
 						"credential_type": schema.StringAttribute{
-							Optional:   true,
+							Optional: true, Computed: true,
 							Validators: []validator.String{stringvalidator.OneOf(nessieCredentialTypes...)},
 						},
-						// JDBC-family fields (MYSQL/POSTGRES/MSSQL) are plain Optional for
-						// the same reason as the Nessie-only fields above: no real state
-						// predates them for any type, and a shared Computed+Default would
-						// plan a spurious value on every OTHER type's resources. There's no
-						// enum validator on authentication_type or
+						// JDBC-family fields (MYSQL/POSTGRES/MSSQL): Optional+Computed, no
+						// Default - see the comment above mount_path etc. for why. There's
+						// no enum validator on authentication_type or
 						// encryption_validation_mode: unlike GCS/NESSIE, these are closed
 						// Enterprise connectors with no public Java class to confirm the
 						// full set of legal values against - only "MASTER" and
 						// "CERTIFICATE_AND_HOSTNAME_VALIDATION" have actually been observed.
-						"max_idle_conns":             schema.Int64Attribute{Optional: true},
-						"idle_time_sec":              schema.Int64Attribute{Optional: true},
-						"query_timeout_sec":          schema.Int64Attribute{Optional: true},
-						"use_ssl":                    schema.BoolAttribute{Optional: true},
-						"net_write_timeout":          schema.Int64Attribute{Optional: true},
-						"encryption_validation_mode": schema.StringAttribute{Optional: true},
-						"enable_server_verification": schema.BoolAttribute{Optional: true},
-						"user_impersonation":         schema.BoolAttribute{Optional: true},
+						"max_idle_conns":             schema.Int64Attribute{Optional: true, Computed: true},
+						"idle_time_sec":              schema.Int64Attribute{Optional: true, Computed: true},
+						"query_timeout_sec":          schema.Int64Attribute{Optional: true, Computed: true},
+						"use_ssl":                    schema.BoolAttribute{Optional: true, Computed: true},
+						"net_write_timeout":          schema.Int64Attribute{Optional: true, Computed: true},
+						"encryption_validation_mode": schema.StringAttribute{Optional: true, Computed: true},
+						"enable_server_verification": schema.BoolAttribute{Optional: true, Computed: true},
+						"user_impersonation":         schema.BoolAttribute{Optional: true, Computed: true},
 					},
 				},
 			},
@@ -627,6 +637,42 @@ func applyAPIConfigToModel(sType string, apiConfig map[string]interface{}, model
 	// with a "MISSING TYPE" error. The GCS case below unconditionally
 	// overwrites this with the real value, so resetting it first is safe.
 	model.BucketWhitelist = types.ListNull(types.StringType)
+
+	// Every Optional+Computed-without-Default field (everything below) needs
+	// the same treatment, for a different reason: unlike GCS/NESSIE's
+	// Computed+Default fields (project_id, auth_mode, etc. - Terraform
+	// resolves those to a known Default at plan time even when a type never
+	// sets them, so they're never a problem here), these fields plan as
+	// *unknown* when the config leaves them unset, and if the current
+	// type's case below doesn't touch them, that unknown value would still
+	// be sitting in the final state - Framework hard-errors on that with
+	// "Provider returned invalid result object after apply". Confirmed live
+	// creating a throwaway MYSQL source: fields NESSIE/MSSQL-only fields
+	// like `secure`/`use_ssl` stayed unknown and crashed apply. Resetting
+	// them all to a known null first, then letting each case below
+	// overwrite only the ones it actually uses, fixes it the same way
+	// bucket_whitelist already worked above.
+	model.MountPath = types.StringNull()
+	model.Username = types.StringNull()
+	model.Hostname = types.StringNull()
+	model.Port = types.StringNull()
+	model.AuthenticationType = types.StringNull()
+	model.FetchSize = types.Int64Null()
+	model.Database = types.StringNull()
+	model.ShowOnlyConnectionDatabase = types.BoolNull()
+	model.NessieEndpoint = types.StringNull()
+	model.NessieAuthType = types.StringNull()
+	model.Secure = types.BoolNull()
+	model.StorageProvider = types.StringNull()
+	model.CredentialType = types.StringNull()
+	model.MaxIdleConns = types.Int64Null()
+	model.IdleTimeSec = types.Int64Null()
+	model.QueryTimeoutSec = types.Int64Null()
+	model.UseSsl = types.BoolNull()
+	model.NetWriteTimeout = types.Int64Null()
+	model.EncryptionValidationMode = types.StringNull()
+	model.EnableServerVerification = types.BoolNull()
+	model.UserImpersonation = types.BoolNull()
 
 	switch sType {
 	case "NAS":
