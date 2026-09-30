@@ -13,14 +13,13 @@ import (
 	dapi "github.com/saltxwater/go-dremio-api-client"
 )
 
-// frameworkProvider is muxed alongside the legacy SDKv2 provider (see
-// main.go) so resources can move to terraform-plugin-framework one at a
-// time. Its provider-level schema below must stay identical to the SDKv2
-// one in dremio/provider.go (same attributes, types, required/sensitive
-// flags) - the mux server requires both to match.
+// frameworkProvider is the whole provider. It used to be muxed alongside a
+// legacy terraform-plugin-sdk/v2 provider so resources could move to
+// terraform-plugin-framework one at a time; that migration is complete, so
+// main.go now serves this directly with no mux.
 type frameworkProvider struct{}
 
-// NewFrameworkProvider constructs the Framework half of the muxed provider.
+// NewFrameworkProvider constructs the provider.
 func NewFrameworkProvider() provider.Provider {
 	return &frameworkProvider{}
 }
@@ -89,8 +88,6 @@ func (p *frameworkProvider) Configure(ctx context.Context, req provider.Configur
 // Resources: every resource is migrated off SDKv2 (see the approved
 // migration plan) - none of them show up in any real state we found
 // (`tofu state list` against tofu/dremio-dev has nothing but dremio_source).
-// Only the dremio_summary data source stays on SDKv2 under the mux (see
-// provider.go).
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewSourceResource,
@@ -107,5 +104,7 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 }
 
 func (p *frameworkProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewSummaryDataSource,
+	}
 }

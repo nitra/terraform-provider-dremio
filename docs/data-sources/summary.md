@@ -18,7 +18,7 @@ description: |-
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `summary` (List of Object) (see [below for nested schema](#nestedatt--summary))
+- `summary` (Attributes List) (see [below for nested schema](#nestedatt--summary))
 
 <a id="nestedatt--summary"></a>
 ### Nested Schema for `summary`
