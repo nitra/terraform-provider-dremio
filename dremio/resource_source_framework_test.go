@@ -17,6 +17,33 @@ func mustStringList(t *testing.T, values []string) types.List {
 	return l
 }
 
+func TestSecureConfigPasswordPattern(t *testing.T) {
+	valid := []string{
+		"env:DB_PASSWORD",
+		"file:///var/run/secrets/db-password",
+		"file://relative/path",
+	}
+	for _, v := range valid {
+		if !secureConfigPasswordPattern.MatchString(v) {
+			t.Errorf("expected %q to match secureConfigPasswordPattern (env:/file: URI)", v)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"hunter2",
+		"ENV:DB_PASSWORD",
+		"envDB_PASSWORD",
+		" env:DB_PASSWORD",
+		"https://example.com/secret",
+	}
+	for _, v := range invalid {
+		if secureConfigPasswordPattern.MatchString(v) {
+			t.Errorf("expected %q NOT to match secureConfigPasswordPattern (literal password must be rejected)", v)
+		}
+	}
+}
+
 func TestSourceConfigToAPIConfig_GCS(t *testing.T) {
 	config := sourceConfigModel{
 		ProjectID:       types.StringValue("abie-ua"),

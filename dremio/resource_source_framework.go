@@ -3,6 +3,7 @@ package dremio
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -24,6 +25,14 @@ import (
 )
 
 var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
+
+// secureConfigPasswordPattern restricts secure_config.password to Dremio's
+// CredentialsProvider URI schemes (env:VARNAME, file:///path/to/secret) instead of a
+// literal value, so a plaintext password can never be accidentally committed to
+// Terraform config/state. Both schemes are confirmed to work against this Dremio
+// deployment's JDBC sources (com.dremio.services.credentials.EnvCredentialsProvider /
+// FileCredentialsProvider).
+var secureConfigPasswordPattern = regexp.MustCompile(`^(env|file):`)
 
 // nessieAuthTypes are NessieAuthType values (com.dremio.exec.catalog.conf.NessieAuthType).
 var nessieAuthTypes = []string{"NONE", "BEARER", "OAUTH2"}
@@ -312,7 +321,20 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Validators: []validator.List{listvalidator.SizeAtMost(1)},
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						"password":            schema.StringAttribute{Optional: true, Sensitive: true},
+						"password": schema.StringAttribute{
+							Optional:  true,
+							Sensitive: true,
+							MarkdownDescription: "Must be a Dremio credential provider URI, not a literal password: " +
+								"`env:VARNAME` (reads an environment variable on the Dremio server process) or " +
+								"`file:///path/to/secret` (reads a file on the Dremio server). This keeps plaintext " +
+								"passwords out of Terraform config and state.",
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(
+									secureConfigPasswordPattern,
+									"must be a Dremio credential provider URI (env:VARNAME or file:///path/to/secret), not a literal password - see https://docs.dremio.com for CredentialsProvider details",
+								),
+							},
+						},
 						"private_key":         schema.StringAttribute{Optional: true, Sensitive: true},
 						"nessie_access_token": schema.StringAttribute{Optional: true, Sensitive: true},
 					},

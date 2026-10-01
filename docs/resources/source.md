@@ -98,5 +98,5 @@ Optional:
 Optional:
 
 - `nessie_access_token` (String, Sensitive)
-- `password` (String, Sensitive)
+- `password` (String, Sensitive) Must be a Dremio credential provider URI, not a literal password: `env:VARNAME` (reads an environment variable on the Dremio server process) or `file:///path/to/secret` (reads a file on the Dremio server). This keeps plaintext passwords out of Terraform config and state.
 - `private_key` (String, Sensitive)
