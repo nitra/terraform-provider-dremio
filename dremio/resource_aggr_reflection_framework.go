@@ -82,6 +82,9 @@ func (r *aggrReflectionResource) Schema(ctx context.Context, req resource.Schema
 			"dataset_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Description: "Prefer referencing the dremio_dataset data source over a " +
+					"hardcoded id (see its docs for why, and the required " +
+					"lifecycle { create_before_destroy = true } on this resource).",
 			},
 			"name": schema.StringAttribute{
 				Required: true,

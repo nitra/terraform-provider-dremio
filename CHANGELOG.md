@@ -6,6 +6,17 @@ All notable changes to this fork are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- `dremio_source` now refuses to apply a metadata-impacting config change
+  (anything Dremio's own `POST /apiv2/sources/isMetadataImpacting` flags -
+  confirmed live to delete and rediscover every dataset under the source,
+  silently dropping reflections/formats/permissions, with no warning at the
+  API level) unless `DREMIO_ALLOW_METADATA_IMPACTING_CHANGE` is set in the
+  environment running `tofu apply`.
+- New `dremio_dataset` data source: resolves a dataset's current catalog id
+  by path. Reference it from `dremio_raw_reflection`/`dremio_aggr_reflection`'s
+  `dataset_id` instead of a hardcoded id so a reflection self-heals on the
+  next `tofu apply` after an acknowledged metadata-impacting change, instead
+  of being permanently orphaned against an id that no longer exists.
 - `Importer` on `dremio_source`, so an existing source (e.g. created through
   the Dremio UI) can be brought under management with `tofu import` instead
   of being recreated.

@@ -17,7 +17,7 @@ description: |-
 
 ### Required
 
-- `dataset_id` (String)
+- `dataset_id` (String) Prefer referencing the dremio_dataset data source over a hardcoded id (see its docs for why, and the required lifecycle { create_before_destroy = true } on this resource).
 - `dimension_fields` (List of String)
 - `name` (String)
 

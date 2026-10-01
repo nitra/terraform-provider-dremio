@@ -3,6 +3,8 @@ package dremio
 import (
 	"context"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -41,6 +43,76 @@ func TestSecureConfigPasswordPattern(t *testing.T) {
 		if secureConfigPasswordPattern.MatchString(v) {
 			t.Errorf("expected %q NOT to match secureConfigPasswordPattern (literal password must be rejected)", v)
 		}
+	}
+}
+
+func TestDecideMetadataImpactGuard(t *testing.T) {
+	cases := []struct {
+		name         string
+		impacting    bool
+		allowed      bool
+		wantBlock    bool
+		wantInFields []string // substrings that must appear in message when blocked
+	}{
+		{name: "not impacting never blocks", impacting: false, allowed: false, wantBlock: false},
+		{name: "not impacting ignores allowed", impacting: false, allowed: true, wantBlock: false},
+		{name: "impacting and not allowed blocks", impacting: true, allowed: false, wantBlock: true,
+			wantInFields: []string{"hostname", "DREMIO_ALLOW_METADATA_IMPACTING_CHANGE"}},
+		{name: "impacting but allowed proceeds", impacting: true, allowed: true, wantBlock: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			block, message := decideMetadataImpactGuard(tc.impacting, tc.allowed, "mysource", []string{"hostname", "port"})
+			if block != tc.wantBlock {
+				t.Fatalf("block = %v, want %v (message: %q)", block, tc.wantBlock, message)
+			}
+			if !tc.wantBlock && message != "" {
+				t.Fatalf("expected empty message when not blocking, got %q", message)
+			}
+			for _, substr := range tc.wantInFields {
+				if !strings.Contains(message, substr) {
+					t.Errorf("expected message to mention %q, got %q", substr, message)
+				}
+			}
+		})
+	}
+}
+
+func TestDecideMetadataImpactGuard_NoChangedFields(t *testing.T) {
+	// guardAgainstMetadataImpact's own error-path callers pass an empty
+	// changedFields slice (the check failed before a diff could be computed) -
+	// the message must still render sensibly instead of an empty field list.
+	block, message := decideMetadataImpactGuard(true, false, "mysource", nil)
+	if !block {
+		t.Fatalf("expected block=true")
+	}
+	if !strings.Contains(message, "its configuration") {
+		t.Errorf("expected a generic fallback phrase in message, got %q", message)
+	}
+}
+
+func TestDiffAPIConfigFields(t *testing.T) {
+	old := map[string]interface{}{
+		"hostname":  "a",
+		"port":      "1234",
+		"password":  "ignored-old",
+		"fetchSize": 200,
+	}
+	new := map[string]interface{}{
+		"hostname": "b",    // changed
+		"port":     "1234", // unchanged
+		"password": "ignored-new",
+		"username": "root", // added
+	}
+
+	got := diffAPIConfigFields(old, new)
+	sort.Strings(got)
+	want := []string{"fetchSize", "hostname", "username"} // fetchSize: removed, counts as changed
+	sort.Strings(want)
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("diffAPIConfigFields() = %v, want %v", got, want)
 	}
 }
 

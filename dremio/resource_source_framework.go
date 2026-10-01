@@ -3,7 +3,10 @@ package dremio
 import (
 	"context"
 	"fmt"
+	"os"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -33,6 +36,74 @@ var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
 // deployment's JDBC sources (com.dremio.services.credentials.EnvCredentialsProvider /
 // FileCredentialsProvider).
 var secureConfigPasswordPattern = regexp.MustCompile(`^(env|file):`)
+
+// metadataImpactGuardEnvVar is the escape hatch for guardAgainstMetadataImpact:
+// set it (to any non-empty value) in the environment running `tofu apply` to
+// proceed with a metadata-impacting source change anyway. Deliberately not a
+// schema attribute/lifecycle flag - anything written into .tf/state is a
+// standing switch that's easy to forget enabled, silently waving through a
+// later, unintended impacting change. An env var only affects the one
+// `tofu apply` process it's set for and leaves no trace in config or state.
+const metadataImpactGuardEnvVar = "DREMIO_ALLOW_METADATA_IMPACTING_CHANGE"
+
+// decideMetadataImpactGuard is the pure decision inside guardAgainstMetadataImpact,
+// factored out so it's unit-testable without HTTP. changedFields names which
+// config/secure_config attributes differ between the prior and new config, for
+// the error message only - the block/proceed decision itself always comes from
+// impacting (Dremio's own answer, or a forced true when that couldn't be
+// determined - see guardAgainstMetadataImpact).
+func decideMetadataImpactGuard(impacting bool, allowed bool, sourceName string, changedFields []string) (block bool, message string) {
+	if !impacting || allowed {
+		return false, ""
+	}
+	sorted := append([]string(nil), changedFields...)
+	sort.Strings(sorted)
+	fields := "its configuration"
+	if len(sorted) > 0 {
+		fields = strings.Join(sorted, ", ")
+	}
+	return true, fmt.Sprintf(
+		"Source %q: this change touches %s, which Dremio treats as metadata-impacting "+
+			"(confirmed live against POST /apiv2/sources/isMetadataImpacting - the same check "+
+			"behind the UI's \"Warning\" dialog). Applying it deletes and rediscovers every "+
+			"dataset under this source, silently dropping any reflections, formats and "+
+			"permissions attached to them - with no warning at the API level. "+
+			"If reflections for this source are declared as dremio_raw_reflection/"+
+			"dremio_aggr_reflection resources that reference a dremio_dataset data source by "+
+			"path (not a hardcoded dataset_id), re-running `tofu apply` right after this one "+
+			"will recreate them automatically; anything that exists only in the Dremio UI will "+
+			"not come back on its own. To proceed anyway, set %s=1 in the environment running "+
+			"`tofu apply`, for this one run.",
+		sourceName, fields, metadataImpactGuardEnvVar,
+	)
+}
+
+// diffAPIConfigFields lists the apiConfig keys whose value differs between
+// old and new, for guardAgainstMetadataImpact's error message. "password" is
+// excluded: Dremio never echoes it back on Read, so the "old" side is always
+// blank regardless of the real stored value, making any diff on it
+// meaningless (the guard's block/proceed decision never depends on this list
+// either way - it only comes from Dremio's own isMetadataImpacting answer).
+func diffAPIConfigFields(old, new map[string]interface{}) []string {
+	seen := map[string]bool{}
+	var changed []string
+	for k, v := range new {
+		if k == "password" {
+			continue
+		}
+		seen[k] = true
+		if ov, ok := old[k]; !ok || !reflect.DeepEqual(ov, v) {
+			changed = append(changed, k)
+		}
+	}
+	for k := range old {
+		if k == "password" || seen[k] {
+			continue
+		}
+		changed = append(changed, k)
+	}
+	return changed
+}
 
 // nessieAuthTypes are NessieAuthType values (com.dremio.exec.catalog.conf.NessieAuthType).
 var nessieAuthTypes = []string{"NONE", "BEARER", "OAUTH2"}
@@ -426,6 +497,12 @@ func (r *sourceResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
+	diags = r.guardAgainstMetadataImpact(ctx, state, apiConfig)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	_, err := r.client.UpdateSource(state.ID.ValueString(), &dapi.UpdateSourceSpec{
 		Description:                 plan.Description.ValueString(),
 		Config:                      apiConfig,
@@ -452,6 +529,69 @@ func (r *sourceResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+// guardAgainstMetadataImpact asks Dremio itself - via the same
+// POST /apiv2/sources/isMetadataImpacting check its own UI "Warning" dialog
+// is driven by - whether updating to newConfig would be a metadata-impacting
+// change for this source, and unless metadataImpactGuardEnvVar is set,
+// blocks the apply instead of silently letting Dremio delete and rediscover
+// every dataset under the source (live-verified against dev Dremio 26.0.5:
+// this happens unconditionally and without warning at the API level, only
+// the UI asks first). If the check itself can't be completed (older/newer
+// Dremio without this endpoint, network error), the change is treated as
+// impacting rather than assumed safe - the same env var also covers that
+// case, so an operator isn't stuck if the check endpoint is ever unavailable.
+func (r *sourceResource) guardAgainstMetadataImpact(ctx context.Context, state sourceResourceModel, newConfig map[string]interface{}) diag.Diagnostics {
+	var diags diag.Diagnostics
+	allowed := os.Getenv(metadataImpactGuardEnvVar) != ""
+	sourceName := state.Name.ValueString()
+
+	sourceUI, err := r.client.GetSourceUI(sourceName)
+	if err != nil {
+		if allowed {
+			return diags
+		}
+		diags.AddError("Metadata-impacting source change blocked", fmt.Sprintf(
+			"Could not verify whether this change to source %q is metadata-impacting "+
+				"(GET /apiv2/source/%s failed: %s). Treating it as impacting to be safe: "+
+				"applying it may delete and rediscover every dataset under this source, "+
+				"dropping reflections/formats/permissions with no further warning. "+
+				"Set %s=1 to proceed anyway.", sourceName, sourceName, err.Error(), metadataImpactGuardEnvVar))
+		return diags
+	}
+
+	oldConfig, oldDiags := sourceConfigToAPIConfig(ctx, state.Type.ValueString(), configOf(state), secureConfigOf(state))
+	diags.Append(oldDiags...)
+	if diags.HasError() {
+		return diags
+	}
+
+	mutated := make(map[string]interface{}, len(sourceUI))
+	for k, v := range sourceUI {
+		mutated[k] = v
+	}
+	mutated["config"] = newConfig
+
+	impacting, err := r.client.IsSourceConfigMetadataImpacting(mutated)
+	if err != nil {
+		if allowed {
+			return diags
+		}
+		diags.AddError("Metadata-impacting source change blocked", fmt.Sprintf(
+			"Could not verify whether this change to source %q is metadata-impacting "+
+				"(POST /apiv2/sources/isMetadataImpacting failed: %s). Treating it as impacting "+
+				"to be safe: applying it may delete and rediscover every dataset under this "+
+				"source, dropping reflections/formats/permissions with no further warning. "+
+				"Set %s=1 to proceed anyway.", sourceName, err.Error(), metadataImpactGuardEnvVar))
+		return diags
+	}
+
+	block, message := decideMetadataImpactGuard(impacting, allowed, sourceName, diffAPIConfigFields(oldConfig, newConfig))
+	if block {
+		diags.AddError("Metadata-impacting source change blocked", message)
+	}
+	return diags
 }
 
 func (r *sourceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
