@@ -5,6 +5,11 @@ All notable changes to this fork are documented here. Format loosely follows
 
 ## Unreleased
 
+### Fixed
+- Releases now ship `terraform-registry-manifest.json` (as `_manifest.json`, included in
+  the signed `SHA256SUMS`) declaring protocol `6.0`; without it registry.opentofu.org
+  advertised the provider as protocol `5.0` although it runs on terraform-plugin-framework.
+
 ### Added
 - `dremio_source` now refuses to apply a metadata-impacting config change
   (anything Dremio's own `POST /apiv2/sources/isMetadataImpacting` flags -
