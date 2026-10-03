@@ -5,6 +5,11 @@ All notable changes to this fork are documented here. Format loosely follows
 
 ## Unreleased
 
+### Changed
+- Release artifacts are limited to `darwin_amd64`, `darwin_arm64`, `linux_amd64`,
+  `linux_arm64` and `windows_amd64` (was 15 GOOS/GOARCH combinations incl. freebsd and
+  32-bit). Already published versions keep all their archives.
+
 ### Fixed
 - Releases now ship `terraform-registry-manifest.json` (as `_manifest.json`, included in
   the signed `SHA256SUMS`) declaring protocol `6.0`; without it registry.opentofu.org

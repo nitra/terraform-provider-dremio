@@ -18,19 +18,14 @@ builds:
     - -trimpath
   ldflags:
     - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
-  goos:
-    - freebsd
-    - windows
-    - linux
-    - darwin
-  goarch:
-    - amd64
-    - '386'
-    - arm
-    - arm64
-  ignore:
-    - goos: darwin
-      goarch: '386'
+  # Only platforms we actually run tofu on (dev Macs, macOS/Linux CI runners,
+  # in-cluster arm64/amd64 pools, Windows workstations). Add more on demand.
+  targets:
+    - darwin_amd64
+    - darwin_arm64
+    - linux_amd64
+    - linux_arm64
+    - windows_amd64
   binary: '{{ .ProjectName }}_v{{ .Version }}'
 archives:
 - formats: [zip]
