@@ -17,7 +17,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -28,6 +30,30 @@ import (
 )
 
 var gcsAuthModes = []string{"AUTO", "SERVICE_ACCOUNT_KEYS", "OAUTH2_TOKEN"}
+
+func optionalComputedString() schema.StringAttribute {
+	return schema.StringAttribute{
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+	}
+}
+
+func optionalComputedBool() schema.BoolAttribute {
+	return schema.BoolAttribute{
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+	}
+}
+
+func optionalComputedInt64() schema.Int64Attribute {
+	return schema.Int64Attribute{
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+	}
+}
 
 // secureConfigPasswordPattern restricts secure_config.password to Dremio's
 // CredentialsProvider URI schemes (env:VARNAME, file:///path/to/secret) instead of a
@@ -325,53 +351,58 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						// returns is acceptable (no crash), and for types that don't
 						// use the field, the one-time diff after adding it is an honest
 						// "(known after apply)" rather than a misleading concrete value.
-						"mount_path":          schema.StringAttribute{Optional: true, Computed: true},
-						"username":            schema.StringAttribute{Optional: true, Computed: true},
-						"hostname":            schema.StringAttribute{Optional: true, Computed: true},
-						"port":                schema.StringAttribute{Optional: true, Computed: true},
-						"authentication_type": schema.StringAttribute{Optional: true, Computed: true},
-						"fetch_size":          schema.Int64Attribute{Optional: true, Computed: true},
-						"database":            schema.StringAttribute{Optional: true, Computed: true},
+						"mount_path":          optionalComputedString(),
+						"username":            optionalComputedString(),
+						"hostname":            optionalComputedString(),
+						"port":                optionalComputedString(),
+						"authentication_type": optionalComputedString(),
+						"fetch_size":          optionalComputedInt64(),
+						"database":            optionalComputedString(),
 						"show_only_connection_database": schema.BoolAttribute{
-							Optional: true, Computed: true,
+							Optional: true, Computed: true, PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						// These values are defaults only for GCS. They cannot have schema
 						// defaults because config is shared with JDBC sources: Dremio does
 						// not return them for JDBC, causing a perpetual update after import.
-						"project_id": schema.StringAttribute{Optional: true, Computed: true},
+						"project_id": optionalComputedString(),
 						"auth_mode": schema.StringAttribute{
 							Optional: true, Computed: true,
-							Validators: []validator.String{stringvalidator.OneOf(gcsAuthModes...)},
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+							Validators:    []validator.String{stringvalidator.OneOf(gcsAuthModes...)},
 						},
-						"root_path": schema.StringAttribute{Optional: true, Computed: true},
+						"root_path": optionalComputedString(),
 						"bucket_whitelist": schema.ListAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
 						},
-						"async_enabled":  schema.BoolAttribute{Optional: true, Computed: true},
-						"caching_enable": schema.BoolAttribute{Optional: true, Computed: true},
+						"async_enabled":  optionalComputedBool(),
+						"caching_enable": optionalComputedBool(),
 						"cache_percent": schema.Int64Attribute{
 							Optional: true, Computed: true,
-							Validators: []validator.Int64{int64validator.Between(1, 100)},
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+							Validators:    []validator.Int64{int64validator.Between(1, 100)},
 						},
-						"client_email":   schema.StringAttribute{Optional: true, Computed: true},
-						"client_id":      schema.StringAttribute{Optional: true, Computed: true},
-						"private_key_id": schema.StringAttribute{Optional: true, Computed: true},
+						"client_email":   optionalComputedString(),
+						"client_id":      optionalComputedString(),
+						"private_key_id": optionalComputedString(),
 						// Nessie-only fields: Optional+Computed, no Default - see the
 						// comment above mount_path etc. for why.
-						"nessie_endpoint": schema.StringAttribute{Optional: true, Computed: true},
+						"nessie_endpoint": optionalComputedString(),
 						"nessie_auth_type": schema.StringAttribute{
 							Optional: true, Computed: true,
-							Validators: []validator.String{stringvalidator.OneOf(nessieAuthTypes...)},
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+							Validators:    []validator.String{stringvalidator.OneOf(nessieAuthTypes...)},
 						},
-						"secure": schema.BoolAttribute{Optional: true, Computed: true},
+						"secure": optionalComputedBool(),
 						"storage_provider": schema.StringAttribute{
 							Optional: true, Computed: true,
-							Validators: []validator.String{stringvalidator.OneOf(nessieStorageProviders...)},
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+							Validators:    []validator.String{stringvalidator.OneOf(nessieStorageProviders...)},
 						},
 						"credential_type": schema.StringAttribute{
 							Optional: true, Computed: true,
-							Validators: []validator.String{stringvalidator.OneOf(nessieCredentialTypes...)},
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+							Validators:    []validator.String{stringvalidator.OneOf(nessieCredentialTypes...)},
 						},
 						// JDBC-family fields (MYSQL/POSTGRES/MSSQL): Optional+Computed, no
 						// Default - see the comment above mount_path etc. for why. There's
@@ -380,14 +411,14 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						// Enterprise connectors with no public Java class to confirm the
 						// full set of legal values against - only "MASTER" and
 						// "CERTIFICATE_AND_HOSTNAME_VALIDATION" have actually been observed.
-						"max_idle_conns":             schema.Int64Attribute{Optional: true, Computed: true},
-						"idle_time_sec":              schema.Int64Attribute{Optional: true, Computed: true},
-						"query_timeout_sec":          schema.Int64Attribute{Optional: true, Computed: true},
-						"use_ssl":                    schema.BoolAttribute{Optional: true, Computed: true},
-						"net_write_timeout":          schema.Int64Attribute{Optional: true, Computed: true},
-						"encryption_validation_mode": schema.StringAttribute{Optional: true, Computed: true},
-						"enable_server_verification": schema.BoolAttribute{Optional: true, Computed: true},
-						"user_impersonation":         schema.BoolAttribute{Optional: true, Computed: true},
+						"max_idle_conns":             optionalComputedInt64(),
+						"idle_time_sec":              optionalComputedInt64(),
+						"query_timeout_sec":          optionalComputedInt64(),
+						"use_ssl":                    optionalComputedBool(),
+						"net_write_timeout":          optionalComputedInt64(),
+						"encryption_validation_mode": optionalComputedString(),
+						"enable_server_verification": optionalComputedBool(),
+						"user_impersonation":         optionalComputedBool(),
 					},
 				},
 			},
