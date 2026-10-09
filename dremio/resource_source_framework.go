@@ -335,25 +335,28 @@ func (r *sourceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						"show_only_connection_database": schema.BoolAttribute{
 							Optional: true, Computed: true,
 						},
-						"project_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
+						// These values are defaults only for GCS. They cannot have schema
+						// defaults because config is shared with JDBC sources: Dremio does
+						// not return them for JDBC, causing a perpetual update after import.
+						"project_id": schema.StringAttribute{Optional: true, Computed: true},
 						"auth_mode": schema.StringAttribute{
-							Optional: true, Computed: true, Default: stringdefault.StaticString("AUTO"),
+							Optional: true, Computed: true,
 							Validators: []validator.String{stringvalidator.OneOf(gcsAuthModes...)},
 						},
-						"root_path": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("/")},
+						"root_path": schema.StringAttribute{Optional: true, Computed: true},
 						"bucket_whitelist": schema.ListAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
 						},
-						"async_enabled":  schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(true)},
-						"caching_enable": schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(true)},
+						"async_enabled":  schema.BoolAttribute{Optional: true, Computed: true},
+						"caching_enable": schema.BoolAttribute{Optional: true, Computed: true},
 						"cache_percent": schema.Int64Attribute{
-							Optional: true, Computed: true, Default: int64default.StaticInt64(70),
+							Optional: true, Computed: true,
 							Validators: []validator.Int64{int64validator.Between(1, 100)},
 						},
-						"client_email":   schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"client_id":      schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
-						"private_key_id": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("")},
+						"client_email":   schema.StringAttribute{Optional: true, Computed: true},
+						"client_id":      schema.StringAttribute{Optional: true, Computed: true},
+						"private_key_id": schema.StringAttribute{Optional: true, Computed: true},
 						// Nessie-only fields: Optional+Computed, no Default - see the
 						// comment above mount_path etc. for why.
 						"nessie_endpoint": schema.StringAttribute{Optional: true, Computed: true},
@@ -670,6 +673,27 @@ func secureConfigOf(m sourceResourceModel) secureConfigModel {
 	return secureConfigModel{}
 }
 
+func stringOrDefault(value types.String, fallback string) string {
+	if value.IsNull() || value.IsUnknown() {
+		return fallback
+	}
+	return value.ValueString()
+}
+
+func boolOrDefault(value types.Bool, fallback bool) bool {
+	if value.IsNull() || value.IsUnknown() {
+		return fallback
+	}
+	return value.ValueBool()
+}
+
+func int64OrDefault(value types.Int64, fallback int64) int64 {
+	if value.IsNull() || value.IsUnknown() {
+		return fallback
+	}
+	return value.ValueInt64()
+}
+
 func metadataPolicyOf(m sourceResourceModel) *dapi.SourceMetadataPolicy {
 	return &dapi.SourceMetadataPolicy{
 		AuthTTLMs:             int(m.AuthTTLMs.ValueInt64()),
@@ -742,16 +766,16 @@ func sourceConfigToAPIConfig(ctx context.Context, sType string, config sourceCon
 		var bucketWhitelist []string
 		diags.Append(config.BucketWhitelist.ElementsAs(ctx, &bucketWhitelist, false)...)
 		return map[string]interface{}{
-			"projectId":       config.ProjectID.ValueString(),
-			"authMode":        config.AuthMode.ValueString(),
-			"rootPath":        config.RootPath.ValueString(),
+			"projectId":       stringOrDefault(config.ProjectID, ""),
+			"authMode":        stringOrDefault(config.AuthMode, "AUTO"),
+			"rootPath":        stringOrDefault(config.RootPath, "/"),
 			"bucketWhitelist": bucketWhitelist,
-			"asyncEnabled":    config.AsyncEnabled.ValueBool(),
-			"cachingEnable":   config.CachingEnable.ValueBool(),
-			"cachePercent":    config.CachePercent.ValueInt64(),
-			"clientEmail":     config.ClientEmail.ValueString(),
-			"clientId":        config.ClientID.ValueString(),
-			"privateKeyId":    config.PrivateKeyID.ValueString(),
+			"asyncEnabled":    boolOrDefault(config.AsyncEnabled, true),
+			"cachingEnable":   boolOrDefault(config.CachingEnable, true),
+			"cachePercent":    int64OrDefault(config.CachePercent, 70),
+			"clientEmail":     stringOrDefault(config.ClientEmail, ""),
+			"clientId":        stringOrDefault(config.ClientID, ""),
+			"privateKeyId":    stringOrDefault(config.PrivateKeyID, ""),
 			"privateKey":      secure.PrivateKey.ValueString(),
 		}, diags
 	case "NESSIE":
