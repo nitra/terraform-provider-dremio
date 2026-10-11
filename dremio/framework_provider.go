@@ -100,6 +100,7 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewEntityWikiResource,
 		NewPhysicalDatasetResource,
 		NewPromotedDatasetResource,
+		NewUserResource,
 	}
 }
 

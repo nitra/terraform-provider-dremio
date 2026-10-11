@@ -5,6 +5,11 @@ All notable changes to this fork are documented here. Format loosely follows
 
 ## Unreleased
 
+### Added
+- `dremio_user`: import existing local Community Edition users by UUID and
+  manage profile metadata without storing passwords or changing permissions.
+  Account creation/deletion and Enterprise/external users are rejected.
+
 ### Changed
 - Release artifacts are limited to `darwin_amd64`, `darwin_arm64`, `linux_amd64`,
   `linux_arm64` and `windows_amd64` (was 15 GOOS/GOARCH combinations incl. freebsd and
