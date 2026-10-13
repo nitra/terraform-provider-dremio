@@ -2,6 +2,7 @@ package dremio
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -32,7 +33,10 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		resp, err = t.base.RoundTrip(req)
 
-		retryable := err != nil || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		// OSS RBAC writes use global OCC and server-generated IDs. An ambiguous
+		// response must be reconciled by read/import, never replayed automatically.
+		unsafeRBACWrite := strings.Contains(req.URL.Path, "/api/v3/rbac/") && req.Method != http.MethodGet
+		retryable := !unsafeRBACWrite && (err != nil || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500)
 		if !retryable || attempt >= t.maxRetries {
 			return resp, err
 		}

@@ -22,6 +22,17 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./... -timeout 60s
+      - name: Set up OpenTofu for isolated RBAC acceptance
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - name: Test RBAC roles, memberships, grants and ownership on local fixture
+        run: |
+          set -eu
+          tofu_binary="$(command -v tofu)"
+          test -x "$tofu_binary"
+          TOFU_RBAC_BINARY="$tofu_binary" go test ./dremio -run '^Test(Role|Membership|Grant|Ownership)OpenTofuLifecycle$' -count=1 -timeout 120s
       - name: Check generated docs are up to date
         run: |
           go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 generate
