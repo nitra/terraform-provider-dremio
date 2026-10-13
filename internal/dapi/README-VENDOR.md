@@ -33,4 +33,29 @@ below now serialize `false` explicitly):
   standing up a dedicated promoted-dataset test scenario disproportionate to
   how little this resource is used.
 
-The rest of the client is unmodified from v0.1.6.
+Additional fork extensions include local-user profile support and
+`rbac_role.go`: a client for the experimental OSS fork's `/api/v3/rbac/roles`
+contract. It uses the existing authentication/request path, validates stable
+role IDs and policy tags, and does not implement the Enterprise Roles API.
+Roles require explicit ADMIN bootstrap. `rbac_membership.go` adds one exact
+USER/ROLE assignment by stable IDs and a canonical import key. Bootstrap
+remains outside this client extension. `rbac_grant.go` manages one
+concrete explicit privilege by stable object/principal IDs, with canonical
+import keys and exact revocation; it does not implement ALL or bulk scopes.
+`rbac_ownership.go` reads durable ownership and transfers it by stable target and
+owner IDs. Canonical import keys identify only the target. Delete supplies the
+exact owner and policy tag, never deletes a live target or revokes grants, and
+is only allowed by the server for proven-deleted namespace IDs. Existing ownership
+requires explicit import; role/VDS creation already reserves durable owners.
+One client's RBAC mutations are serialized before reading the shared policy tag.
+The provider transport deliberately
+does not retry OSS RBAC mutations after ambiguous failures.
+
+Initial ADMIN is an operator-controlled, one-shot server operation, not provider
+CRUD: the OSS fork exposes authenticated POST `/api/v3/rbac/bootstrap` only for
+the active account whose UID is pinned in server startup configuration
+`security.access-control.oss.bootstrap.admin-uid`. It uses KV CREATE and never
+replaces an existing/corrupt policy. Remove that configuration after acceptance.
+The provider does not create users/passwords/tokens or reset/bootstrap policy.
+Import the already-existing `rbac:admin` USER membership before managing it with
+`dremio_role_membership`. Normal RBAC resources require the initialized policy.

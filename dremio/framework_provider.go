@@ -101,6 +101,10 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewPhysicalDatasetResource,
 		NewPromotedDatasetResource,
 		NewUserResource,
+		NewRoleResource,
+		NewRoleMembershipResource,
+		NewGrantResource,
+		NewOwnershipResource,
 	}
 }
 

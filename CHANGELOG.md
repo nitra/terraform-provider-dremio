@@ -6,6 +6,27 @@ All notable changes to this fork are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- `dremio_ownership`: stable target import, explicit adoption and in-place
+  USER/ROLE owner transfer with policy OCC. Live ownership destroy is refused;
+  only proven-deleted namespace IDs permit exact ownership-only cleanup.
+  Existing ownership requires import. SYSTEM ownership and bootstrap are unsupported.
+  Isolated OpenTofu acceptance covers import, transfer, no-op and safe cleanup.
+- `dremio_grant`: one explicit concrete privilege per stable object/principal
+  tuple, canonical import key and OCC. Delete leaves other/inherited access intact.
+  ALL, bulk grants, ownership and versioned refs are unsupported.
+  Isolated OpenTofu acceptance covers mixed role/membership/grant lifecycle.
+- `dremio_role_membership`: manage one explicit USER/ROLE assignment by stable
+  IDs, canonical import key and policy OCC; no bulk replacement or name adoption.
+  Server reuses cycle/last-active-ADMIN guards. OpenTofu fixture acceptance
+  covers dependency-ordered create/destroy, import and repeated no-op plans.
+- RBAC resources serialize read-modify-write mutations within one provider
+  client; external writers still produce policy OCC conflicts without auto-retry.
+- Experimental `dremio_role` for the OSS RBAC fork: stable-ID import, create/read
+  and OCC-protected non-cascading delete through `/api/v3/rbac/roles`.
+  RBAC writes are never automatically retried; system roles cannot be mutated.
+  Bootstrap is not yet managed by the provider; ownership is a separate resource.
+- Isolated OpenTofu acceptance for role create, no-op plan, stable-ID import and
+  destroy runs against a local HTTP fixture in CI; no live state or credentials.
 - `dremio_user`: import existing local Community Edition users by UUID and
   manage profile metadata without storing passwords or changing permissions.
   Account creation/deletion and Enterprise/external users are rejected.

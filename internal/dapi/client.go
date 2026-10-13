@@ -11,14 +11,16 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sync"
 
 	"github.com/hashicorp/go-cleanhttp"
 )
 
 type Client struct {
-	config  Config
-	baseUrl url.URL
-	client  *http.Client
+	config       Config
+	baseUrl      url.URL
+	client       *http.Client
+	rbacMutation sync.Mutex
 }
 
 type Config struct {
