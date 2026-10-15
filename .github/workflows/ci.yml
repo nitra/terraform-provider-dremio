@@ -35,5 +35,5 @@ jobs:
           TOFU_RBAC_BINARY="$tofu_binary" go test ./dremio -run '^Test(Role|Membership|Grant|Ownership)OpenTofuLifecycle$' -count=1 -timeout 120s
       - name: Check generated docs are up to date
         run: |
-          go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 generate
+          go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 generate --provider-name dremio --rendered-provider-name terraform-provider-dremio
           git diff --exit-code -- docs/ || (echo "::error::docs/ is stale, run 'make docs' and commit the result" && exit 1)
