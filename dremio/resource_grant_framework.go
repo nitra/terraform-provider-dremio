@@ -36,10 +36,10 @@ func (r *grantResource) Metadata(_ context.Context, req resource.MetadataRequest
 }
 func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
-	resp.Schema = schema.Schema{Description: "One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes, ownership and versioned refs are outside this resource. Existing grants require import.", Attributes: map[string]schema.Attribute{
+	resp.Schema = schema.Schema{Description: "One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN or exact-object MANAGE_GRANTS and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes and ownership are outside this resource. Existing grants require import.", Attributes: map[string]schema.Attribute{
 		"id":           schema.StringAttribute{Computed: true, Description: "Canonical base64url without padding of compact JSON [object_type, object_id, grantee_type, grantee_id, privilege].", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-		"object_type":  schema.StringAttribute{Required: true, Description: "PROJECT (SYSTEM), SOURCE, SPACE, FOLDER, PDS, VDS or FUNCTION. Server validates the live namespace type.", PlanModifiers: replace},
-		"object_id":    schema.StringAttribute{Required: true, Description: "Stable namespace ID, or SYSTEM for PROJECT. Object recreation requires a new explicit grant.", PlanModifiers: replace},
+		"object_type":  schema.StringAttribute{Required: true, Description: "PROJECT (SYSTEM), SOURCE, SPACE, FOLDER, PDS, VDS, FUNCTION, VERSIONED_PDS or VERSIONED_VDS. Server validates the live target on create.", PlanModifiers: replace},
+		"object_id":    schema.StringAttribute{Required: true, Description: "Stable namespace ID, SYSTEM for PROJECT, or the server-resolved base64url versioned dataset ID. Object recreation requires a new explicit grant.", PlanModifiers: replace},
 		"grantee_type": schema.StringAttribute{Required: true, Description: "USER or ROLE.", PlanModifiers: replace, Validators: []validator.String{stringvalidator.OneOf("USER", "ROLE")}},
 		"grantee_id":   schema.StringAttribute{Required: true, Description: "Stable user UID or role ID, never display name.", PlanModifiers: replace},
 		"privilege":    schema.StringAttribute{Required: true, Description: "One existing Dremio privilege enum name, validated against the object type on the server. ALL is unsupported.", PlanModifiers: replace, Validators: []validator.String{stringvalidator.NoneOf("ALL")}},
@@ -92,12 +92,12 @@ func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 		resp.Diagnostics.AddError("Unable to read grant", err.Error())
 		return
 	}
-	roles, err := r.client.GetRBACRoles()
+	tag, err := r.client.GetRBACGrantAuthority(g)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read policy version", err.Error())
 		return
 	}
-	result, err := r.client.PutRBACGrant(g, roles.Tag)
+	result, err := r.client.PutRBACGrant(g, tag)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to grant privilege", err.Error())
 		return

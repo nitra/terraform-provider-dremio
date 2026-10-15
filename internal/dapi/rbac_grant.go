@@ -26,7 +26,7 @@ func (g RBACGrant) Key() (string, error) {
 		if g.ObjectID != "SYSTEM" {
 			return "", fmt.Errorf("PROJECT requires SYSTEM object ID")
 		}
-	case "SOURCE", "SPACE", "FOLDER", "PDS", "VDS", "FUNCTION":
+	case "SOURCE", "SPACE", "FOLDER", "PDS", "VDS", "FUNCTION", "VERSIONED_PDS", "VERSIONED_VDS":
 	default:
 		return "", fmt.Errorf("unsupported object type")
 	}
@@ -90,6 +90,22 @@ func (c *Client) grantRequest(method string, g RBACGrant, tag string) (*RBACGran
 }
 
 func (c *Client) GetRBACGrant(g RBACGrant) (*RBACGrant, error) { return c.grantRequest("GET", g, "") }
+func (c *Client) GetRBACGrantAuthority(g RBACGrant) (string, error) {
+	if _, err := g.Key(); err != nil {
+		return "", err
+	}
+	path := "/api/v3/rbac/grant-authority/" + url.PathEscape(g.ObjectType) + "/" + url.PathEscape(g.ObjectID)
+	var result struct {
+		Tag string `json:"tag"`
+	}
+	if err := c.request("GET", path, nil, &result); err != nil {
+		return "", err
+	}
+	if result.Tag == "" {
+		return "", fmt.Errorf("missing OSS RBAC policy tag")
+	}
+	return result.Tag, nil
+}
 func (c *Client) PutRBACGrant(g RBACGrant, tag string) (*RBACGrant, error) {
 	return c.grantRequest("PUT", g, tag)
 }

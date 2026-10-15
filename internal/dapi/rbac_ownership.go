@@ -22,7 +22,7 @@ func (o RBACOwnership) Key() (string, error) {
 		return "", fmt.Errorf("stable target ID required")
 	}
 	switch o.ObjectType {
-	case "ROLE", "SOURCE", "SPACE", "FOLDER", "PDS", "VDS", "FUNCTION":
+	case "ROLE", "SOURCE", "SPACE", "FOLDER", "PDS", "VDS", "FUNCTION", "VERSIONED_PDS", "VERSIONED_VDS":
 	default:
 		return "", fmt.Errorf("unsupported ownership target type")
 	}
@@ -54,6 +54,9 @@ func (o RBACOwnership) path() (string, error) {
 func (o RBACOwnership) validateOwner() error {
 	if o.OwnerID == "" || (o.OwnerType != "USER" && o.OwnerType != "ROLE") {
 		return fmt.Errorf("stable USER or ROLE owner required")
+	}
+	if o.ObjectType == "VERSIONED_VDS" && o.OwnerType != "USER" {
+		return fmt.Errorf("versioned view requires a USER owner")
 	}
 	return nil
 }

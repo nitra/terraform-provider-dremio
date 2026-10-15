@@ -155,6 +155,8 @@ func runRBACOpenTofuLifecycle(t *testing.T, withMembership, withGrant, withOwner
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"roleId": "fixture-role", "memberType": "USER", "memberId": "fixture-user", "tag": fmt.Sprint(writes)})
+		case req.URL.Path == "/api/v3/rbac/grant-authority/PROJECT/SYSTEM":
+			_ = json.NewEncoder(w).Encode(map[string]string{"tag": fmt.Sprint(writes)})
 		case req.URL.Path == "/api/v3/rbac/grants/PROJECT/SYSTEM/ROLE/fixture-role/CREATE_ROLE":
 			switch req.Method {
 			case "GET":

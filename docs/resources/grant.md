@@ -3,12 +3,12 @@
 page_title: "dremio_grant Resource - terraform-provider-dremio"
 subcategory: ""
 description: |-
-  One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes, ownership and versioned refs are outside this resource. Existing grants require import.
+  One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN or exact-object MANAGE_GRANTS and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes and ownership are outside this resource. Existing grants require import.
 ---
 
 # dremio_grant (Resource)
 
-One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes, ownership and versioned refs are outside this resource. Existing grants require import.
+One explicit concrete privilege in the experimental OSS RBAC fork. Requires active ADMIN or exact-object MANAGE_GRANTS and policy OCC. Uses stable object/principal IDs; never adopts by name. Delete revokes only this privilege, not other or inherited access. ALL, bulk scopes and ownership are outside this resource. Existing grants require import.
 
 ## Example Usage
 
@@ -39,8 +39,8 @@ resource "dremio_grant" "create_roles" {
 
 - `grantee_id` (String) Stable user UID or role ID, never display name.
 - `grantee_type` (String) USER or ROLE.
-- `object_id` (String) Stable namespace ID, or SYSTEM for PROJECT. Object recreation requires a new explicit grant.
-- `object_type` (String) PROJECT (SYSTEM), SOURCE, SPACE, FOLDER, PDS, VDS or FUNCTION. Server validates the live namespace type.
+- `object_id` (String) Stable namespace ID, SYSTEM for PROJECT, or the server-resolved base64url versioned dataset ID. Object recreation requires a new explicit grant.
+- `object_type` (String) PROJECT (SYSTEM), SOURCE, SPACE, FOLDER, PDS, VDS, FUNCTION, VERSIONED_PDS or VERSIONED_VDS. Server validates the live target on create.
 - `privilege` (String) One existing Dremio privilege enum name, validated against the object type on the server. ALL is unsupported.
 
 ### Read-Only

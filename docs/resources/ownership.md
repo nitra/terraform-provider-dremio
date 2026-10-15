@@ -37,7 +37,7 @@ resource "dremio_ownership" "analytics" {
 ### Required
 
 - `object_id` (String) Stable target ID; never a name.
-- `object_type` (String) ROLE, SOURCE, SPACE, FOLDER, PDS, VDS or FUNCTION.
+- `object_type` (String) ROLE, SOURCE, SPACE, FOLDER, PDS, VDS, FUNCTION, VERSIONED_PDS or VERSIONED_VDS.
 - `owner_id` (String) Active user UID or existing role ID; changing it transfers ownership in place.
 - `owner_type` (String) USER or ROLE; changing it transfers ownership in place.
 

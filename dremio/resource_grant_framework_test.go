@@ -61,8 +61,8 @@ func TestGrantResourceLifecyclePreservesOtherPrivileges(t *testing.T) {
 	alterExists := true
 	writes := 0
 	client := roleClient(t, func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path == "/api/v3/rbac/roles" && req.Method == "GET" {
-			_, _ = w.Write([]byte(`{"tag":"v1","roles":{"rbac:admin":"ADMIN","rbac:public":"PUBLIC"}}`))
+		if req.URL.Path == "/api/v3/rbac/grant-authority/SPACE/space-id" && req.Method == "GET" {
+			_, _ = w.Write([]byte(`{"tag":"v1"}`))
 			return
 		}
 		if req.URL.Path != "/api/v3/rbac/grants/SPACE/space-id/ROLE/role-id/SELECT" {
