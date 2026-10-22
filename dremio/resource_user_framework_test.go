@@ -112,11 +112,14 @@ func TestUserCreateUsesWriteOnlyInitialPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringValue("initial-password")}
-	state := userState(t, initial)
+	plan := userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringNull()}
+	config := plan
+	config.InitialPasswordWO = types.StringValue("initial-password")
+	state := userState(t, plan)
+	configState := userState(t, config)
 	response := resource.CreateResponse{}
 	response.State.Schema = state.Schema
-	(&userResource{client: client}).Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}}, &response)
+	(&userResource{client: client}).Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}, Config: tfsdk.Config{Schema: configState.Schema, Raw: configState.Raw}}, &response)
 	if response.Diagnostics.HasError() {
 		t.Fatal(response.Diagnostics)
 	}
@@ -137,7 +140,7 @@ func TestUserCreateRequiresInitialPasswordAndDeleteIsBlocked(t *testing.T) {
 	state := userState(t, userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringNull()})
 	create := resource.CreateResponse{}
 	create.State.Schema = state.Schema
-	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}}, &create)
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}, Config: tfsdk.Config{Schema: state.Schema, Raw: state.Raw}}, &create)
 	if !create.Diagnostics.HasError() {
 		t.Fatal("account creation without a password must fail")
 	}

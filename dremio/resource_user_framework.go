@@ -73,16 +73,20 @@ func (r *userResource) ImportState(ctx context.Context, req resource.ImportState
 }
 
 func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan userResourceModel
+	var plan, config userResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	// OpenTofu intentionally removes write-only values from the plan. Read the
+	// password from configuration so it is available to the create request but
+	// is still absent from both the saved plan and state.
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if plan.InitialPasswordWO.IsNull() || plan.InitialPasswordWO.IsUnknown() || plan.InitialPasswordWO.ValueString() == "" {
+	if config.InitialPasswordWO.IsNull() || config.InitialPasswordWO.IsUnknown() || config.InitialPasswordWO.ValueString() == "" {
 		resp.Diagnostics.AddError("Initial password required", "Set initial_password_wo from an ephemeral secret value when creating a local Dremio user.")
 		return
 	}
-	created, err := r.client.CreateLocalUser(dapi.User{Name: plan.Name.ValueString(), FirstName: plan.FirstName.ValueString(), LastName: plan.LastName.ValueString(), Email: plan.Email.ValueString()}, plan.InitialPasswordWO.ValueString())
+	created, err := r.client.CreateLocalUser(dapi.User{Name: plan.Name.ValueString(), FirstName: plan.FirstName.ValueString(), LastName: plan.LastName.ValueString(), Email: plan.Email.ValueString()}, config.InitialPasswordWO.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to create Dremio user", err.Error())
 		return

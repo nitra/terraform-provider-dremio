@@ -40,6 +40,9 @@ All notable changes to this fork are documented here. Format loosely follows
   32-bit). Already published versions keep all their archives.
 
 ### Fixed
+- `dremio_user` now reads `initial_password_wo` from resource configuration
+  during create. OpenTofu removes write-only values from the plan by design;
+  reading it from the plan previously rejected valid password input.
 - Releases now ship `terraform-registry-manifest.json` (as `_manifest.json`, included in
   the signed `SHA256SUMS`) declaring protocol `6.0`; without it registry.opentofu.org
   advertised the provider as protocol `5.0` although it runs on terraform-plugin-framework.
