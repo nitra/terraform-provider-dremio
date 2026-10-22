@@ -9,7 +9,8 @@ import (
 )
 
 // User contains only non-secret local-user profile fields. Passwords and roles
-// are deliberately absent: adopting a user must not change either of them.
+// are deliberately absent so reads and profile updates never expose or reset
+// credentials.
 type User struct {
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name"`
@@ -21,6 +22,36 @@ type User struct {
 	Type      string          `json:"@type,omitempty"`
 	Source    string          `json:"source,omitempty"`
 	Roles     json.RawMessage `json:"roles,omitempty"`
+}
+
+// CreateLocalUser creates one local Community Edition user. The password is
+// deliberately an argument rather than a User field, so it cannot be returned
+// by reads or accidentally reused in profile updates.
+func (c *Client) CreateLocalUser(user User, password string) (*User, error) {
+	if user.Name == "" || password == "" {
+		return nil, fmt.Errorf("local user name and password are required")
+	}
+	result := new(User)
+	body, err := json.Marshal(struct {
+		Name      string `json:"name"`
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+	}{user.Name, user.FirstName, user.LastName, user.Email, password})
+	if err != nil {
+		return nil, err
+	}
+	if err := c.request(http.MethodPost, "/api/v3/user", bytes.NewBuffer(body), result); err != nil {
+		return nil, err
+	}
+	if result.ID == "" || result.Name != user.Name {
+		return nil, fmt.Errorf("invalid created user response for %s", user.Name)
+	}
+	if result.Type == "EnterpriseUser" || result.Source == "external" || len(result.Roles) > 0 {
+		return nil, fmt.Errorf("created user %s is not a supported local Community Edition user", user.Name)
+	}
+	return result, nil
 }
 
 // GetUser reads a user by its stable UUID; Community Edition supports this

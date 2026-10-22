@@ -6,6 +6,9 @@ All notable changes to this fork are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- `dremio_user` can create a local Community Edition account with an
+  `initial_password_wo` write-only attribute. Passwords never enter plan or
+  state; deletion remains refused, and permissions stay independently managed.
 - `dremio_ownership`: stable target import, explicit adoption and in-place
   USER/ROLE owner transfer with policy OCC. Live ownership destroy is refused;
   only proven-deleted namespace IDs permit exact ownership-only cleanup.
@@ -37,6 +40,9 @@ All notable changes to this fork are documented here. Format loosely follows
   32-bit). Already published versions keep all their archives.
 
 ### Fixed
+- `dremio_user` now reads `initial_password_wo` from resource configuration
+  during create. OpenTofu removes write-only values from the plan by design;
+  reading it from the plan previously rejected valid password input.
 - Releases now ship `terraform-registry-manifest.json` (as `_manifest.json`, included in
   the signed `SHA256SUMS`) declaring protocol `6.0`; without it registry.opentofu.org
   advertised the provider as protocol `5.0` although it runs on terraform-plugin-framework.
