@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	dapi "github.com/saltxwater/go-dremio-api-client"
 )
 
@@ -82,17 +85,75 @@ func TestUserReadHandlesMissingAndMalformedAccounts(t *testing.T) {
 	}
 }
 
-func TestUserCannotCreateOrDeleteAccounts(t *testing.T) {
+func userState(t *testing.T, model userResourceModel) tfsdk.State {
+	t.Helper()
+	var schema resource.SchemaResponse
+	(&userResource{}).Schema(context.Background(), resource.SchemaRequest{}, &schema)
+	state := tfsdk.State{Schema: schema.Schema}
+	if diags := state.Set(context.Background(), model); diags.HasError() {
+		t.Fatal(diags)
+	}
+	return state
+}
+
+func TestUserCreateUsesWriteOnlyInitialPassword(t *testing.T) {
+	var body map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost || req.URL.Path != "/api/v3/user" {
+			t.Errorf("unexpected request %s %s", req.Method, req.URL.Path)
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write([]byte(`{"id":"new-id","name":"new-user","firstName":"New","lastName":"User","email":"new@example.com","active":true}`))
+	}))
+	defer server.Close()
+	client, err := dapi.NewClient(server.URL, dapi.Config{ApiKey: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringValue("initial-password")}
+	state := userState(t, initial)
+	response := resource.CreateResponse{}
+	response.State.Schema = state.Schema
+	(&userResource{client: client}).Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}}, &response)
+	if response.Diagnostics.HasError() {
+		t.Fatal(response.Diagnostics)
+	}
+	if body["password"] != "initial-password" || len(body) != 5 {
+		t.Fatalf("unexpected create body: %v", body)
+	}
+	var created userResourceModel
+	if diags := response.State.Get(context.Background(), &created); diags.HasError() {
+		t.Fatal(diags)
+	}
+	if created.ID.ValueString() != "new-id" || !created.InitialPasswordWO.IsNull() {
+		t.Fatal("create kept a write-only password or lost the created identity")
+	}
+}
+
+func TestUserCreateRequiresInitialPasswordAndDeleteIsBlocked(t *testing.T) {
 	r := &userResource{}
-	var create resource.CreateResponse
-	r.Create(context.Background(), resource.CreateRequest{}, &create)
+	state := userState(t, userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringNull()})
+	create := resource.CreateResponse{}
+	create.State.Schema = state.Schema
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}}, &create)
 	if !create.Diagnostics.HasError() {
-		t.Fatal("account creation must require import")
+		t.Fatal("account creation without a password must fail")
 	}
 	var remove resource.DeleteResponse
 	r.Delete(context.Background(), resource.DeleteRequest{}, &remove)
 	if !remove.Diagnostics.HasError() {
 		t.Fatal("account deletion must be blocked")
+	}
+}
+
+func TestUserSchemaUsesSensitiveWriteOnlyInitialPassword(t *testing.T) {
+	var response resource.SchemaResponse
+	(&userResource{}).Schema(context.Background(), resource.SchemaRequest{}, &response)
+	attribute, ok := response.Schema.Attributes["initial_password_wo"].(resourceschema.StringAttribute)
+	if !ok || !attribute.Optional || !attribute.Sensitive || !attribute.WriteOnly || attribute.Computed {
+		t.Fatal("initial password must be optional, sensitive, write-only and absent from state")
 	}
 }
 

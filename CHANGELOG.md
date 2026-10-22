@@ -6,6 +6,9 @@ All notable changes to this fork are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- `dremio_user` can create a local Community Edition account with an
+  `initial_password_wo` write-only attribute. Passwords never enter plan or
+  state; deletion remains refused, and permissions stay independently managed.
 - `dremio_ownership`: stable target import, explicit adoption and in-place
   USER/ROLE owner transfer with policy OCC. Live ownership destroy is refused;
   only proven-deleted namespace IDs permit exact ownership-only cleanup.

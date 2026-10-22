@@ -14,13 +14,14 @@ import (
 )
 
 type userResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	Name      types.String `tfsdk:"name"`
-	FirstName types.String `tfsdk:"first_name"`
-	LastName  types.String `tfsdk:"last_name"`
-	Email     types.String `tfsdk:"email"`
-	Tag       types.String `tfsdk:"tag"`
-	Active    types.Bool   `tfsdk:"active"`
+	ID                types.String `tfsdk:"id"`
+	Name              types.String `tfsdk:"name"`
+	FirstName         types.String `tfsdk:"first_name"`
+	LastName          types.String `tfsdk:"last_name"`
+	Email             types.String `tfsdk:"email"`
+	InitialPasswordWO types.String `tfsdk:"initial_password_wo"`
+	Tag               types.String `tfsdk:"tag"`
+	Active            types.Bool   `tfsdk:"active"`
 }
 
 type userResource struct{ client *dapi.Client }
@@ -31,7 +32,8 @@ var (
 	_ resource.ResourceWithImportState = &userResource{}
 )
 
-// NewUserResource manages profiles of imported existing local users.
+// NewUserResource manages local Dremio user profiles and can provision a new
+// account with a write-only initial password.
 func NewUserResource() resource.Resource { return &userResource{} }
 
 func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -40,15 +42,16 @@ func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Profile of an existing local Dremio Community Edition user. Import by UUID is required; creation, deletion, passwords and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.",
+		Description: "Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.",
 		Attributes: map[string]schema.Attribute{
-			"id":         schema.StringAttribute{Computed: true, Description: "Stable user UUID.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-			"name":       schema.StringAttribute{Required: true, Description: "Existing username. Renaming users is not supported.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
-			"first_name": schema.StringAttribute{Optional: true, Computed: true, Description: "First name; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-			"last_name":  schema.StringAttribute{Optional: true, Computed: true, Description: "Last name; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-			"email":      schema.StringAttribute{Optional: true, Computed: true, Description: "Email; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-			"tag":        schema.StringAttribute{Computed: true, Description: "Version used for optimistic concurrency."},
-			"active":     schema.BoolAttribute{Computed: true, Description: "Current account status; never changed by this resource."},
+			"id":                  schema.StringAttribute{Computed: true, Description: "Stable user UUID.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+			"name":                schema.StringAttribute{Required: true, Description: "Existing username. Renaming users is not supported.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
+			"first_name":          schema.StringAttribute{Optional: true, Computed: true, Description: "First name; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+			"last_name":           schema.StringAttribute{Optional: true, Computed: true, Description: "Last name; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+			"email":               schema.StringAttribute{Optional: true, Computed: true, Description: "Email; omitted values retain the existing profile.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+			"initial_password_wo": schema.StringAttribute{Optional: true, Sensitive: true, WriteOnly: true, Description: "Initial local-user password. Required only when creating a user; write-only values never enter the plan or state and cannot rotate an existing password."},
+			"tag":                 schema.StringAttribute{Computed: true, Description: "Version used for optimistic concurrency."},
+			"active":              schema.BoolAttribute{Computed: true, Description: "Current account status; never changed by this resource."},
 		},
 	}
 }
@@ -69,8 +72,24 @@ func (r *userResource) ImportState(ctx context.Context, req resource.ImportState
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func (r *userResource) Create(_ context.Context, _ resource.CreateRequest, resp *resource.CreateResponse) {
-	resp.Diagnostics.AddError("Existing user must be imported", "dremio_user adopts an existing account. Create the account through your identity-management workflow, then import its UUID. This resource never creates passwords or users.")
+func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan userResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if plan.InitialPasswordWO.IsNull() || plan.InitialPasswordWO.IsUnknown() || plan.InitialPasswordWO.ValueString() == "" {
+		resp.Diagnostics.AddError("Initial password required", "Set initial_password_wo from an ephemeral secret value when creating a local Dremio user.")
+		return
+	}
+	created, err := r.client.CreateLocalUser(dapi.User{Name: plan.Name.ValueString(), FirstName: plan.FirstName.ValueString(), LastName: plan.LastName.ValueString(), Email: plan.Email.ValueString()}, plan.InitialPasswordWO.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to create Dremio user", err.Error())
+		return
+	}
+	plan.InitialPasswordWO = types.StringNull()
+	plan.read(created)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -100,7 +119,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.AddError("User rename is not supported", "Import the existing account under its current name.")
+		resp.Diagnostics.AddError("User rename is not supported", "Create a distinct account or import the existing account under its current name.")
 		return
 	}
 	user := dapi.User{ID: state.ID.ValueString(), Name: plan.Name.ValueString(), FirstName: plan.FirstName.ValueString(), LastName: plan.LastName.ValueString(), Email: plan.Email.ValueString(), Tag: state.Tag.ValueString()}
@@ -113,12 +132,13 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		resp.Diagnostics.AddError("Unable to read updated Dremio user", err.Error())
 		return
 	}
+	plan.InitialPasswordWO = types.StringNull()
 	plan.read(updated)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *userResource) Delete(_ context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
-	resp.Diagnostics.AddError("Dremio user deletion is not supported", "This resource never deletes an account. To stop managing the profile, remove it from OpenTofu state without destroying the user.")
+	resp.Diagnostics.AddError("Dremio user deletion is not supported", "This resource never deletes an account. Disable it through the identity-management workflow, then remove it from OpenTofu state without destroying the user.")
 }
 
 // read copies only public profile metadata into state.
