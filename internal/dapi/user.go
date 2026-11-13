@@ -86,3 +86,13 @@ func (c *Client) UpdateUserProfile(user User) error {
 	}
 	return c.request(http.MethodPut, "/api/v3/user/"+url.PathEscape(user.ID), bytes.NewBuffer(body), nil)
 }
+
+// DeleteUser removes a local user. Community Edition's /api/v3/user has no
+// DELETE (405) and SQL DROP USER is Enterprise-only, so this uses the legacy
+// /apiv2 endpoint. The observed tag is sent as the optimistic-concurrency version.
+func (c *Client) DeleteUser(user User) error {
+	if user.Name == "" || user.Tag == "" {
+		return fmt.Errorf("user name and observed tag required")
+	}
+	return c.request(http.MethodDelete, "/apiv2/user/"+url.PathEscape(user.Name)+"?version="+url.QueryEscape(user.Tag), nil, nil)
+}

@@ -42,7 +42,7 @@ func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.",
+		Description: "Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Deleting a user is refused while it is still a role member; grants and ownership are managed by separate resources and must be removed first. Enterprise and externally provisioned users are rejected.",
 		Attributes: map[string]schema.Attribute{
 			"id":                  schema.StringAttribute{Computed: true, Description: "Stable user UUID.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name":                schema.StringAttribute{Required: true, Description: "Existing username. Renaming users is not supported.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
@@ -141,8 +141,55 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *userResource) Delete(_ context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
-	resp.Diagnostics.AddError("Dremio user deletion is not supported", "This resource never deletes an account. Disable it through the identity-management workflow, then remove it from OpenTofu state without destroying the user.")
+// Delete removes a local account. It refuses while the user is still a member of
+// any role: memberships, grants and ownership are separate resources and must be
+// destroyed first (OpenTofu orders that through dependencies). Grants and
+// ownership cannot be enumerated per principal, so only role membership is checked.
+func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	defer r.client.BeginRBACMutation()()
+	var state userResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	user, err := r.client.GetUser(state.ID.ValueString())
+	if isNotFoundError(err) {
+		return
+	}
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to read Dremio user", err.Error())
+		return
+	}
+	if user.Name != state.Name.ValueString() {
+		resp.Diagnostics.AddError("User identity changed", "Refusing deletion; refresh state first.")
+		return
+	}
+	roles, err := r.client.GetRBACRoles()
+	switch {
+	case err == nil:
+		for roleID, roleName := range roles.Roles {
+			if roleID == "rbac:public" {
+				continue
+			}
+			_, err := r.client.GetRBACMembership(roleID, "USER", user.ID)
+			if err == nil {
+				resp.Diagnostics.AddError("User is still a role member", fmt.Sprintf("Refusing to delete %q: it is still a member of role %q. Remove its dremio_role_membership first.", user.Name, roleName))
+				return
+			}
+			if !isRBACNotFoundError(err) {
+				resp.Diagnostics.AddError("Unable to check role membership", err.Error())
+				return
+			}
+		}
+	case isRBACNotFoundError(err):
+		// The server has no OSS RBAC API, so there are no memberships to check.
+	default:
+		resp.Diagnostics.AddError("Unable to read OSS RBAC roles", err.Error())
+		return
+	}
+	if err := r.client.DeleteUser(*user); err != nil {
+		resp.Diagnostics.AddError("Unable to delete Dremio user", err.Error())
+	}
 }
 
 // read copies only public profile metadata into state.
