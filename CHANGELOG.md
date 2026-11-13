@@ -8,7 +8,13 @@ All notable changes to this fork are documented here. Format loosely follows
 ### Added
 - `dremio_user` can create a local Community Edition account with an
   `initial_password_wo` write-only attribute. Passwords never enter plan or
-  state; deletion remains refused, and permissions stay independently managed.
+  state; permissions stay independently managed.
+- `dremio_user` destroy now deletes the account through the legacy
+  `DELETE /apiv2/user/{name}?version=<tag>` endpoint (`/api/v3` has no DELETE and
+  SQL `DROP USER` is Enterprise-only). Deletion is refused while the user is
+  still a member of any role (implicit PUBLIC excluded); grants and ownership are
+  not enumerable per principal and must be destroyed first. A missing account is
+  treated as already deleted and an identity mismatch is refused.
 - `dremio_ownership`: stable target import, explicit adoption and in-place
   USER/ROLE owner transfer with policy OCC. Live ownership destroy is refused;
   only proven-deleted namespace IDs permit exact ownership-only cleanup.

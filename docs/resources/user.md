@@ -3,12 +3,12 @@
 page_title: "dremio_user Resource - terraform-provider-dremio"
 subcategory: ""
 description: |-
-  Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
+  Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Deleting a user is refused while it is still a role member; grants and ownership are managed by separate resources and must be removed first. Enterprise and externally provisioned users are rejected.
 ---
 
 # dremio_user (Resource)
 
-Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
+Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Deleting a user is refused while it is still a role member; grants and ownership are managed by separate resources and must be removed first. Enterprise and externally provisioned users are rejected.
 
 ## Example Usage
 
