@@ -3,12 +3,12 @@
 page_title: "dremio_user Resource - terraform-provider-dremio"
 subcategory: ""
 description: |-
-  Profile of an existing local Dremio Community Edition user. Import by UUID is required; creation, deletion, passwords and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
+  Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
 ---
 
 # dremio_user (Resource)
 
-Profile of an existing local Dremio Community Edition user. Import by UUID is required; creation, deletion, passwords and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
+Profile of a local Dremio Community Edition user. New users require a write-only initial password; imported users never require or expose a password. Account deletion and permissions are deliberately outside this resource's scope. Enterprise and externally provisioned users are rejected.
 
 ## Example Usage
 
@@ -38,8 +38,11 @@ import {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `email` (String) Email; omitted values retain the existing profile.
 - `first_name` (String) First name; omitted values retain the existing profile.
+- `initial_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Initial local-user password. Required only when creating a user; write-only values never enter the plan or state and cannot rotate an existing password.
 - `last_name` (String) Last name; omitted values retain the existing profile.
 
 ### Read-Only

@@ -111,7 +111,7 @@ func (c *Client) newRequest(method, requestPath string, body io.Reader) (*http.R
 		if body == nil {
 			log.Printf("request (%s) to %s with no body data", method, url)
 		} else {
-			log.Printf("request (%s) to %s with body data: %s", method, url, body.(*bytes.Buffer))
+			log.Printf("request (%s) to %s with body data", method, url)
 		}
 	}
 
