@@ -135,7 +135,7 @@ func TestUserCreateUsesWriteOnlyInitialPassword(t *testing.T) {
 	}
 }
 
-func TestUserCreateRequiresInitialPasswordAndDeleteIsBlocked(t *testing.T) {
+func TestUserCreateRequiresInitialPassword(t *testing.T) {
 	r := &userResource{}
 	state := userState(t, userResourceModel{ID: types.StringUnknown(), Name: types.StringValue("new-user"), FirstName: types.StringValue("New"), LastName: types.StringValue("User"), Email: types.StringValue("new@example.com"), InitialPasswordWO: types.StringNull()})
 	create := resource.CreateResponse{}
@@ -143,11 +143,6 @@ func TestUserCreateRequiresInitialPasswordAndDeleteIsBlocked(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: state.Schema, Raw: state.Raw}, Config: tfsdk.Config{Schema: state.Schema, Raw: state.Raw}}, &create)
 	if !create.Diagnostics.HasError() {
 		t.Fatal("account creation without a password must fail")
-	}
-	var remove resource.DeleteResponse
-	r.Delete(context.Background(), resource.DeleteRequest{}, &remove)
-	if !remove.Diagnostics.HasError() {
-		t.Fatal("account deletion must be blocked")
 	}
 }
 
@@ -167,5 +162,128 @@ func TestUserSchemaHasNoCredentialOrPermissionFields(t *testing.T) {
 		if _, ok := resp.Schema.Attributes[key]; ok {
 			t.Errorf("unexpected %s in schema", key)
 		}
+	}
+}
+
+// deleteScenario drives userResource.Delete against a fake Dremio and records
+// every DELETE /apiv2/user request it makes.
+type deleteScenario struct {
+	user       string // body for GET /api/v3/user/u-1; empty means 404
+	roles      string // body for GET /api/v3/rbac/roles; empty means 404
+	memberOf   map[string]bool
+	deletes    []string
+	memberHits []string
+}
+
+func (sc *deleteScenario) run(t *testing.T, stateName string) resource.DeleteResponse {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/api/v3/user/u-1":
+			if sc.user == "" {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(sc.user))
+		case req.Method == http.MethodGet && req.URL.Path == "/api/v3/rbac/roles":
+			if sc.roles == "" {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(sc.roles))
+		case req.Method == http.MethodGet && len(req.URL.Path) > len("/api/v3/rbac/memberships/"):
+			sc.memberHits = append(sc.memberHits, req.URL.Path)
+			for roleID, member := range sc.memberOf {
+				if member && req.URL.Path == "/api/v3/rbac/memberships/"+roleID+"/USER/u-1" {
+					_, _ = w.Write([]byte(`{"roleId":"` + roleID + `","memberType":"USER","memberId":"u-1","tag":"m1"}`))
+					return
+				}
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		case req.Method == http.MethodDelete && req.URL.Path == "/apiv2/user/gone-user":
+			sc.deletes = append(sc.deletes, req.URL.RequestURI())
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request %s %s", req.Method, req.URL.Path)
+			http.Error(w, "unexpected", http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+	client, err := dapi.NewClient(server.URL, dapi.Config{ApiKey: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := userState(t, userResourceModel{ID: types.StringValue("u-1"), Name: types.StringValue(stateName), FirstName: types.StringValue("G"), LastName: types.StringValue("U"), Email: types.StringValue("g@example.com"), InitialPasswordWO: types.StringNull(), Tag: types.StringValue("v1"), Active: types.BoolValue(true)})
+	var response resource.DeleteResponse
+	response.State = state
+	(&userResource{client: client}).Delete(context.Background(), resource.DeleteRequest{State: state}, &response)
+	return response
+}
+
+const (
+	goneUserJSON = `{"id":"u-1","name":"gone-user","firstName":"G","lastName":"U","email":"g@example.com","tag":"v1","active":true}`
+	rolesJSON    = `{"tag":"t1","roles":{"rbac:admin":"ADMIN","rbac:public":"PUBLIC","r1":"Analyst"}}`
+)
+
+func TestUserDeleteUsesLegacyEndpointWithObservedTag(t *testing.T) {
+	sc := &deleteScenario{user: goneUserJSON, roles: rolesJSON}
+	response := sc.run(t, "gone-user")
+	if response.Diagnostics.HasError() {
+		t.Fatal(response.Diagnostics)
+	}
+	if len(sc.deletes) != 1 || sc.deletes[0] != "/apiv2/user/gone-user?version=v1" {
+		t.Fatalf("unexpected delete requests: %v", sc.deletes)
+	}
+	for _, hit := range sc.memberHits {
+		if hit == "/api/v3/rbac/memberships/rbac:public/USER/u-1" {
+			t.Fatal("implicit PUBLIC membership must not be checked")
+		}
+	}
+	if len(sc.memberHits) != 2 {
+		t.Fatalf("expected membership checks for admin and r1, got %v", sc.memberHits)
+	}
+}
+
+func TestUserDeleteRefusesWhileRoleMember(t *testing.T) {
+	sc := &deleteScenario{user: goneUserJSON, roles: rolesJSON, memberOf: map[string]bool{"r1": true}}
+	response := sc.run(t, "gone-user")
+	if !response.Diagnostics.HasError() {
+		t.Fatal("deleting a role member must be refused")
+	}
+	if len(sc.deletes) != 0 {
+		t.Fatalf("refused deletion still called DELETE: %v", sc.deletes)
+	}
+}
+
+func TestUserDeleteIsIdempotentWhenAccountIsGone(t *testing.T) {
+	sc := &deleteScenario{}
+	response := sc.run(t, "gone-user")
+	if response.Diagnostics.HasError() {
+		t.Fatal(response.Diagnostics)
+	}
+	if len(sc.deletes) != 0 {
+		t.Fatalf("missing account must not trigger DELETE: %v", sc.deletes)
+	}
+}
+
+func TestUserDeleteRefusesWhenIdentityChanged(t *testing.T) {
+	sc := &deleteScenario{user: goneUserJSON, roles: rolesJSON}
+	response := sc.run(t, "someone-else")
+	if !response.Diagnostics.HasError() {
+		t.Fatal("name mismatch between state and server must be refused")
+	}
+	if len(sc.deletes) != 0 {
+		t.Fatalf("identity mismatch still called DELETE: %v", sc.deletes)
+	}
+}
+
+func TestUserDeleteWorksWithoutRBACAPI(t *testing.T) {
+	sc := &deleteScenario{user: goneUserJSON}
+	response := sc.run(t, "gone-user")
+	if response.Diagnostics.HasError() {
+		t.Fatal(response.Diagnostics)
+	}
+	if len(sc.deletes) != 1 {
+		t.Fatalf("expected one DELETE without RBAC API, got %v", sc.deletes)
 	}
 }
