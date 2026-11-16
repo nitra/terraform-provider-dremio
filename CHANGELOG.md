@@ -6,6 +6,9 @@ All notable changes to this fork are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- Documented `dremio_user` creation: the example now shows creating a user with an
+  ephemeral `initial_password_wo` next to the import flow, and the `name`
+  description no longer says the user must already exist.
 - `dremio_user` can create a local Community Edition account with an
   `initial_password_wo` write-only attribute. Passwords never enter plan or
   state; permissions stay independently managed.
@@ -38,7 +41,7 @@ All notable changes to this fork are documented here. Format loosely follows
   destroy runs against a local HTTP fixture in CI; no live state or credentials.
 - `dremio_user`: import existing local Community Edition users by UUID and
   manage profile metadata without storing passwords or changing permissions.
-  Account creation/deletion and Enterprise/external users are rejected.
+  Enterprise/external users are rejected.
 
 ### Changed
 - Release artifacts are limited to `darwin_amd64`, `darwin_arm64`, `linux_amd64`,
